@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LearnIS - Learning Intelligence System</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 900px;
+            height: 85vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { font-size: 24px; font-weight: 600; }
+        .header-controls { display: flex; gap: 10px; }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .btn-primary { background: white; color: #667eea; }
+        .btn-primary:hover { background: #f0f0f0; }
+        .btn-secondary { background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); }
+        .btn-secondary:hover { background: rgba(255,255,255,0.3); }
+        .mastery-bar-container {
+            padding: 15px 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .mastery-label {
+            font-size: 14px;
+            color: #6c757d;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .mastery-bar {
+            width: 100%;
+            height: 10px;
+            background: #e9ecef;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .mastery-progress {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            border-radius: 5px;
+            transition: width 0.5s ease;
+            width: 0%;
+        }
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .message {
+            max-width: 80%;
+            padding: 15px 20px;
+            border-radius: 15px;
+            line-height: 1.6;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .message.user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+        .message.assistant {
+            align-self: flex-start;
+            background: #f8f9fa;
+            color: #333;
+            border-bottom-left-radius: 5px;
+        }
+        .message.system {
+            align-self: center;
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            text-align: center;
+            max-width: 90%;
+        }
+        .input-container {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            gap: 15px;
+        }
+        .subject-select {
+            padding: 12px 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-size: 14px;
+            outline: none;
+        }
+        .message-input {
+            flex: 1;
+            padding: 12px 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-size: 14px;
+            outline: none;
+            resize: none;
+        }
+        .send-btn {
+            padding: 12px 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .send-btn:hover { transform: scale(1.05); }
+        .send-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .typing-indicator {
+            display: none;
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            align-self: flex-start;
+        }
+        .typing-indicator.show { display: block; }
+        .typing-dots { display: flex; gap: 5px; }
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: #667eea;
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-10px); }
+        }
+        .welcome-message { text-align: center; padding: 40px; color: #6c757d; }
+        .welcome-message h2 { color: #667eea; margin-bottom: 15px; }
+        .feature-list { text-align: left; max-width: 500px; margin: 20px auto; line-height: 2; }
+        .feature-item { padding: 10px 0; border-bottom: 1px dashed #e9ecef; }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal.show { display: flex; }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎓 LearnIS</h1>
+            <div class="header-controls">
+                <button class="btn btn-secondary" onclick="showStats()">📊 Stats</button>
+                <button class="btn btn-secondary" onclick="showSessions()">📚 Sessions</button>
+                <button class="btn btn-primary" onclick="newSession()">➕ Nouvelle Session</button>
+            </div>
+        </div>
+        <div class="mastery-bar-container">
+            <div class="mastery-label">
+                <span>Niveau de Maîtrise</span>
+                <span id="mastery-percent">0%</span>
+            </div>
+            <div class="mastery-bar">
+                <div class="mastery-progress" id="mastery-progress"></div>
+            </div>
+        </div>
+        <div class="chat-container" id="chat-container">
+            <div class="welcome-message">
+                <h2>Bienvenue sur LearnIS !</h2>
+                <p>Votre assistant d'apprentissage intelligent</p>
+                <div class="feature-list">
+                    <div class="feature-item">✅ <strong>Session auto</strong> - Se termine à 80%+ de maîtrise</div>
+                    <div class="feature-item">💾 <strong>Sauvegarde</strong> - /save pour sauvegarder</div>
+                    <div class="feature-item">📚 <strong>Multi-sessions</strong> - /load pour reprendre</div>
+                    <div class="feature-item">📊 <strong>Stats discrètes</strong> - /stats ou bouton Stats</div>
+                    <div class="feature-item">🎯 <strong>Sujet optionnel</strong> - Mode général disponible</div>
+                </div>
+                <p style="margin-top: 20px; font-style: italic;">Choisissez un sujet (optionnel) et posez votre question !</p>
+            </div>
+        </div>
+        <div class="typing-indicator" id="typing-indicator">
+            <div class="typing-dots">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            </div>
+        </div>
+        <div class="input-container">
+            <select class="subject-select" id="subject-select">
+                <option value="">Sujet (optionnel)</option>
+                <option value="math">Mathématiques</option>
+                <option value="physique">Physique</option>
+                <option value="chimie">Chimie</option>
+                <option value="biologie">Biologie</option>
+                <option value="histoire">Histoire</option>
+                <option value="geo">Géographie</option>
+                <option value="langues">Langues</option>
+                <option value="programmation">Programmation</option>
+                <option value="autre">Autre</option>
+            </select>
+            <textarea class="message-input" id="message-input" placeholder="Posez votre question ou utilisez /help, /stats, /save..." rows="1" onkeypress="handleKeyPress(event)"></textarea>
+            <button class="send-btn" id="send-btn" onclick="sendMessage()">Envoyer</button>
+        </div>
+    </div>
+    <div class="modal" id="stats-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📊 Statistiques</h2>
+                <button class="modal-close" onclick="closeModal('stats-modal')">&times;</button>
+            </div>
+            <div id="stats-content"></div>
+        </div>
+    </div>
+    <div class="modal" id="sessions-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📚 Sessions</h2>
+                <button class="modal-close" onclick="closeModal('sessions-modal')">&times;</button>
+            </div>
+            <div id="sessions-content"></div>
+        </div>
+    </div>
+    <script>
+        function handleKeyPress(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }
+        function addMessage(content, role) {
+            const chat = document.getElementById('chat-container');
+            const welcome = chat.querySelector('.welcome-message');
+            if (welcome) welcome.remove();
+            const msg = document.createElement('div');
+            msg.className = `message ${role}`;
+            msg.innerHTML = content.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            chat.appendChild(msg);
+            chat.scrollTop = chat.scrollHeight;
+        }
+        function showTyping() { document.getElementById('typing-indicator').classList.add('show'); }
+        function hideTyping() { document.getElementById('typing-indicator').classList.remove('show'); }
+        function updateMastery(level) {
+            document.getElementById('mastery-progress').style.width = `${level}%`;
+            document.getElementById('mastery-percent').textContent = `${level}%`;
+        }
+        async function sendMessage() {
+            const input = document.getElementById('message-input');
+            const subject = document.getElementById('subject-select');
+            const btn = document.getElementById('send-btn');
+            const msg = input.value.trim();
+            if (!msg) return;
+            addMessage(msg, 'user');
+            input.value = '';
+            btn.disabled = true;
+            showTyping();
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: msg, subject: subject.value || null})
+                });
+                const data = await res.json();
+                hideTyping();
+                addMessage(data.response, 'assistant');
+                updateMastery(data.mastery_level);
+                if (data.should_end && data.end_reason) setTimeout(() => addMessage(data.end_reason, 'system'), 500);
+            } catch (e) { hideTyping(); addMessage('Erreur de connexion.', 'system'); }
+            btn.disabled = false;
+            input.focus();
+        }
+        async function newSession() {
+            const subject = document.getElementById('subject-select');
+            try {
+                const res = await fetch('/api/session/new', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({subject: subject.value || null})
+                });
+                const data = await res.json();
+                document.getElementById('chat-container').innerHTML = '<div class="welcome-message"><h2>🎉 Nouvelle Session !</h2><p>Prêt à apprendre ?</p></div>';
+                updateMastery(0);
+            } catch (e) { addMessage('Erreur création session.', 'system'); }
+        }
+        async function showStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                if (data.error) document.getElementById('stats-content').innerHTML = `<p>${data.error}</p>`;
+                else document.getElementById('stats-content').innerHTML = `<div style="line-height:2;"><p><strong>Maîtrise:</strong> ${data.mastery_level}%</p><p><strong>Tours:</strong> ${data.turn_count}/15</p><p><strong>Questions:</strong> ${data.stats.questions_answered}</p><p><strong>Complétée:</strong> ${data.completed ? '✓' : 'Non'}</p></div><p style="margin-top:20px;color:#6c757d;">Astuce: /save pour sauvegarder</p>`;
+                document.getElementById('stats-modal').classList.add('show');
+            } catch (e) { document.getElementById('stats-content').innerHTML = '<p>Erreur</p>'; document.getElementById('stats-modal').classList.add('show'); }
+        }
+        function showSessions() {
+            document.getElementById('sessions-content').innerHTML = '<p>Utilisez <code>/sessions</code> dans le chat pour voir vos sessions.</p><p>Ou <code>/load &lt;id&gt;</code> pour reprendre.</p>';
+            document.getElementById('sessions-modal').classList.add('show');
+        }
+        function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+        window.onclick = e => { if (e.target.classList.contains('modal')) e.target.classList.remove('show'); };
+    </script>
+</body>
+</html>
