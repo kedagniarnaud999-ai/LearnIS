@@ -1,6 +1,6 @@
 {
   "name": "LearnIS",
-  "description": "Tuteur Socratique & Constructiviste propulsé par l'IA avec support multimodal et thématiques d'apprentissage",
-  "requestFramePermissions": ["microphone", "camera"],
+  "description": "Tuteur Socratique & Constructiviste propulsé par l'IA avec définitions simplifiées adaptées au niveau d'apprentissage",
+  "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

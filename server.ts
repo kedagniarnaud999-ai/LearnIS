@@ -1,129 +1,54 @@
 import express from 'express';
-import http from 'http';
 import path from 'path';
 import dotenv from 'dotenv';
-import { WebSocketServer, WebSocket } from 'ws';
-import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+app.use(express.json());
 
 // Public static files
 const publicDir = path.join(process.cwd(), 'public');
 app.use(express.static(publicDir));
 
-// Base system prompt preserved and enriched with LearnIS pedagogical framework
-const BASE_SYSTEM_PROMPT = `
-Tu es LearnIS, un tuteur intelligent basé sur la méthode socratique, la maïeutique et le constructivisme.
-TON OBJECTIF MAJEUR : Développer la pensée critique, l'autonomie intellectuelle et la capacité de réflexion et de synthèse de l'apprenant.
+// System prompt preserved exactly from original LearnIS implementation with pedagogical vocabulary tagging
+const SYSTEM_PROMPT = `
+Tu es LearnIS, un tuteur intelligent basé sur la méthode socratique et le constructivisme.
+TON OBJECTIF : Développer la pensée critique, l'autonomie intellectuelle et la capacité de rédaction de l'apprenant.
 
-RÈGLES D'OR PÉDAGOGIQUES ABSOLUES :
+PHILOSOPHIE D'INTERACTION EN 3 PHASES OBLIGATOIRES :
 
-1. CONCISION STRICTE (NE SOIS JAMAIS TROP LONG) :
-- ÉVITE absolument les longs monologues, les cours magistraux ou les pavés de texte rébarbatifs.
-- Réponds de façon concise, vive, aérée et stimulante (2 à 3 paragraphes courts maximum).
-- Ne pose JAMAIS plus de 1 ou 2 questions ciblées et percutantes à la fois pour ne pas noyer l'apprenant sous trop d'informations.
+PHASE 1 : EXPLORATION & CONSTRUCTION DU SAVOIR (Priorité Absolue)
+- NE DONNE JAMAIS la réponse directe, la solution ou le texte final dès le début.
+- Commence par évaluer les connaissances préalables ("Que sais-tu déjà ?", "Quelle est ton opinion ?").
+- Guide par des questions ouvertes, des contre-exemples et des pièges subtils pour tester la vigilance.
+- Assure-toi que l'utilisateur a exprimé sa propre compréhension et formulé ses idées clairement.
+- Si l'utilisateur demande la réponse, refuse poliment mais propose une piste de réflexion.
 
-2. DÉTECTION IMMÉDIATE DE LA COMPRÉHENSION & INVITATION À CONCLURE / REFORMULER :
-- Dès que tu sens ou perçois que l'apprenant a compris l'idée clé ou a eu la bonne intuition (MÊME si c'est dès sa toute première réponse ou après la première question) :
-  * ARRÊTE immédiatement de poser d'autres questions d'investigation ou de tergiverser.
-  * Valide et félicite chaleureusement sa bonne déduction ("Bravo, tu as mis le doigt exactement dessus !").
-  * DEMANDE-LUI DIRECTEMENT de CONCLURE, de REFORMULER avec ses propres mots, ou de partager quelle LEÇON / RÈGLE GÉNÉRALE il retient de cette réflexion ("Si tu devais résumer cette règle ou cette leçon essentielle avec tes propres mots pour l'expliquer à un ami, comment la formulerais-tu ?").
-  * La reformulation active est l'étape reine du constructivisme pour sceller définitivement le savoir.
+PHASE 2 : VALIDATION DE LA COMPRÉHENSION
+- Avant toute aide à la rédaction, vérifie que l'utilisateur a atteint un niveau de compréhension satisfaisant.
+- Pose des questions de validation : "Es-tu sûr de ce point ?", "Comment justifies-tu cette opinion ?".
+- Ne passe à la phase 3 QUE SI l'utilisateur démontre qu'il a assimilé le sujet et qu'il a produit un contenu brut pertinent.
 
-3. SUGGESTION DE PISTES D'APPROFONDISSEMENT DANS LE MÊME SENS :
-- Pour ouvrir l'horizon et attiser la curiosité, suggère à la fin 2 ou 3 pistes passionnantes à explorer dans le même sens (par exemple sous la forme « 💡 Pistes à éclairer dans le même sens : 1... 2... 3... »).
+PHASE 3 : REFORMULATION & FORMALISATION (Sur Demande Explicite ou Validation)
+- UNE FOIS LA COMPRÉHENSION VALIDÉE : Tu peux alors proposer des reformulations pour améliorer le style, la clarté ou la structure.
+- Tu peux suggérer un formatage final (plan de document, structure académique, mise en forme Markdown) pour aider l'utilisateur à finaliser SON travail.
+- Important : Même ici, ne rédige pas tout le document d'un bloc. Propose des paragraphes types ou des structures que l'utilisateur devra adapter et valider.
+- Ton rôle est celui d'un éditeur expert qui polit un diamant déjà taillé par l'apprenant, pas celui qui taille le diamant à sa place.
 
-4. ANALYSE ET UTILISATION DES IMAGES / ILLUSTRATIONS :
-- Si l'apprenant te fournit une image (schéma, problème manuscrit, photo d'exercice, graphique, plante ou objet du quotidien) :
-  * Observe méticuleusement chaque détail de l'image.
-  * Appuie ton questionnement socratique sur ce qui est visible dans l'image ("Que remarques-tu sur le triangle tracé à gauche ?", "Sur ta photo, observe bien la tige...").
-  * Ne donne pas la réponse directe visible sur la photo, mais amène l'élève à l'identifier par lui-même.
-- Tu peux également proposer de petits schémas textuels clairs ou des représentations visuelles simples (diagrammes fléchés, tableaux) si cela aide l'apprenant à se représenter mentalement le concept.
-
-5. PROGRESSION DU DIALOGUE :
-- PHASE 1 : Questionner le point de départ et faire émerger les hypothèses de l'élève sans donner la solution.
-- PHASE 2 : Dès que l'élève a compris, demander la conclusion / reformulation / leçon retenue.
-- PHASE 3 : Proposer les pistes d'approfondissement dans le même sens.
+ENRICHISSEMENT VOCABULAIRE & MOTS COMPLEXES :
+- Dans chacune de tes réponses, identifie 2 à 4 mots, concepts ou termes techniques / académiques qui peuvent être complexes pour l'apprenant (par exemple : termes conceptuels, notions méthodologiques, mots de vocabulaire soutenu).
+- Entoure OBLIGATOIREMENT ces mots de balises claires <term>mot ou expression</term> (exemple : "La <term>maïeutique</term> permet de formuler une <term>hypothèse</term>...").
+- Ne modifie pas le mot à l'intérieur de la balise. L'apprenant pourra cliquer dessus pour voir une définition simplifiée adaptée à son niveau.
 
 TON GÉNÉRAL :
-- Bienveillant, direct, valorisant et dynamique.
-- Évite les hésitations ("peut-être", "je crois"). Sois clair et stimulant.
+- Bienveillant, encourageant, mais exigeant sur la rigueur intellectuelle.
+- Confiant et direct (évite les "je pense que", "peut-être").
+- Adaptable : Si l'utilisateur est bloqué, sois plus guidant. S'il est avancé, sois plus challenger.
 `;
-
-interface EducationalContext {
-  level?: string; // 'primaire' | 'college' | 'lycee' | 'superieur' | 'adulte'
-  environment?: string; // 'afrique' | 'universel' | 'academique'
-  tone?: string; // 'bienveillant' | 'equilibre' | 'challenge'
-  learnerName?: string;
-}
-
-function buildSystemPrompt(context?: EducationalContext): string {
-  let extra = '';
-
-  const learnerName = context?.learnerName?.trim();
-  if (learnerName) {
-    extra += `\n- Nom de l'apprenant : "${learnerName}". Salue-le ou adresse-toi à lui avec bienveillance et respect.`;
-  }
-
-  // Niveau d'études et de langue adaptatif
-  const level = context?.level || 'college';
-  if (level === 'primaire') {
-    extra += `\n- NIVEAU D'ÉTUDES : Primaire / Enfant / Débutant absolu (7 à 11 ans).
-  * Vocabulaire très simple, familier et chaleureux, sans termes techniques ardus.
-  * Phrases courtes et concrètes.
-  * Utilise des images visuelles simples et encourage vivement chaque réflexion.`;
-  } else if (level === 'college') {
-    extra += `\n- NIVEAU D'ÉTUDES : Collège / Premier cycle secondaire (11 à 15 ans).
-  * Langage clair et direct, sans jargon abstrait non expliqué.
-  * Découpe méthodique des étapes de raisonnement.
-  * Vérifie la compréhension des notions de base avant d'avancer.`;
-  } else if (level === 'lycee') {
-    extra += `\n- NIVEAU D'ÉTUDES : Lycée / Second cycle secondaire (15 à 18 ans).
-  * Rigueur conceptuelle, esprit critique, argumentation structurée et vocabulaire précis.
-  * Pousse à définir les termes et à justifier logiquement chaque affirmation.`;
-  } else if (level === 'superieur') {
-    extra += `\n- NIVEAU D'ÉTUDES : Enseignement Supérieur / Université / Recherche.
-  * Vocabulaire académique et scientifique rigoureux.
-  * Problématisation avancée, analyse épistémologique et nuance dans les raisonnements.`;
-  } else if (level === 'adulte') {
-    extra += `\n- NIVEAU D'ÉTUDES : Adulte / Formation continue / Autodidacte.
-  * Approche pragmatique, orientée vers les applications concrètes et professionnelles.
-  * Ton collaboratif, valorisant le vécu et l'expérience de l'apprenant.`;
-  }
-
-  // Environnement et réalités socio-culturelles
-  const env = context?.environment || 'afrique';
-  if (env === 'afrique') {
-    extra += `\n- CONTEXTE & RÉALITÉS SOCIO-CULTURELLES (Afrique subsaharienne & Francophonie locale) :
-  * CRUCIAL : Ancre systématiquement tes exemples, métaphores et analogies dans le quotidien et l'environnement familier de l'Afrique francophone (marchés populaires vivants, artisanat, agriculture locale comme le manioc, l'igname, le maïs ou le mil, transports familiers comme taxis-motos/zemidjans/sotramas/gbakas, vie communautaire et entraide solidaire, faune et climat sahélien/tropical, monnaies locales en FCFA).
-  * ÉVITE FORMELLEMENT les exemples euro-centrés ou inadaptés aux réalités locales (pas de métaphores sur la neige, le métro parisien, les euros, ou des institutions occidentales étrangères).
-  * Respecte les valeurs culturelles : politesse, sagesse des proverbes, respect de l'effort et solidarité.`;
-  } else if (env === 'universel') {
-    extra += `\n- CONTEXTE UNIVERSEL :
-  * Privilégie des exemples intemporels basés sur la nature, le corps humain, les outils simples et la vie quotidienne universelle.`;
-  } else if (env === 'academique') {
-    extra += `\n- CONTEXTE ACADÉMIQUE FORMEL :
-  * Emploie les normes classiques des programmes scolaires francophones avec définitions formelles.`;
-  }
-
-  // Posture pédagogique
-  const tone = context?.tone || 'equilibre';
-  if (tone === 'bienveillant') {
-    extra += `\n- POSTURE : Très douce, rassurante et pas-à-pas. Guide patiemment chaque étape.`;
-  } else if (tone === 'challenge') {
-    extra += `\n- POSTURE : Stimulante et exigeante. Challenge les présupposés, soumets des contre-exemples pour pousser l'apprenant à argumenter solidement.`;
-  } else {
-    extra += `\n- POSTURE : Équilibrée, maïeutique socratique classique (questionne, écoute, guide).`;
-  }
-
-  return `${BASE_SYSTEM_PROMPT.trim()}\n\n--- DIRECTIVES D'ADAPTATION AU CONTEXTE ÉDUCATIF ---${extra}\n`;
-}
 
 // Lazy initialization of Gemini client to prevent crashing if environment variable is not immediately present
 let aiClient: GoogleGenAI | null = null;
@@ -146,52 +71,18 @@ function getAiClient(): GoogleGenAI {
   return aiClient;
 }
 
-interface ImagePayload {
-  data: string;
-  mimeType: string;
-}
-
-// Helper for resilient generation with retries, fallback models and multimodal image support
-async function generateSocraticResponse(
-  ai: GoogleGenAI,
-  fullPrompt: string,
-  systemInstruction: string,
-  image?: ImagePayload | null
-): Promise<string> {
-  // gemini-3.1-flash-lite has optimal quota availability and fast response times
-  const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+// Helper for resilient generation with retries and fallback models
+async function generateSocraticResponse(ai: GoogleGenAI, fullPrompt: string): Promise<string> {
+  const candidateModels = ['gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
   let lastError: any = null;
-
-  // Clean base64 string if client sent a data-URL header
-  let cleanImageData = image?.data;
-  if (cleanImageData && cleanImageData.includes('base64,')) {
-    cleanImageData = cleanImageData.split('base64,')[1];
-  }
-
-  const contents: any = cleanImageData
-    ? [
-        {
-          role: 'user',
-          parts: [
-            { text: fullPrompt },
-            {
-              inlineData: {
-                data: cleanImageData,
-                mimeType: image?.mimeType || 'image/jpeg',
-              },
-            },
-          ],
-        },
-      ]
-    : fullPrompt;
 
   for (const model of candidateModels) {
     try {
       const response = await ai.models.generateContent({
         model,
-        contents,
+        contents: fullPrompt,
         config: {
-          systemInstruction,
+          systemInstruction: SYSTEM_PROMPT,
         },
       });
 
@@ -201,196 +92,299 @@ async function generateSocraticResponse(
     } catch (err: any) {
       lastError = err;
       const errMsg = err?.message || String(err);
-      console.log(`[LearnIS] Info: Modèle ${model} indisponible (${errMsg.slice(0, 100)}...), bascule sur le modèle alternatif...`);
+      console.warn(`[LearnIS] Modèle ${model} a échoué (${errMsg}), tentative avec le modèle suivant...`);
     }
   }
 
   throw lastError;
 }
 
+// Fallback adaptive dictionary for pedagogical and philosophical concepts
+const ADAPTIVE_FALLBACK_DICTIONARY: Record<string, Record<'debutant' | 'intermediaire' | 'avance', { definition: string; example: string; synonym: string }>> = {
+  'socratique': {
+    debutant: {
+      definition: "Une manière d'apprendre en se posant des questions au lieu d'écouter un cours magistral tout fait.",
+      example: "C'est comme une enquête policière où le professeur te pose des énigmes pour que tu trouves toi-même le mystère.",
+      synonym: "Par questions-réponses / dialogue"
+    },
+    intermediaire: {
+      definition: "Méthode philosophique initiée par Socrate, fondée sur le dialogue et le questionnement pour faire émerger la vérité.",
+      example: "Plutôt que d'affirmer 'la justice est ceci', le tuteur interroge les contradictions de son interlocuteur.",
+      synonym: "Méthode interrogative / dialectique"
+    },
+    avance: {
+      definition: "Approche philosophique et pédagogique aporétique où le questionnement rigoureux déconstruit les préjugés (doxa) pour accoucher des concepts.",
+      example: "L'ironie socratique met en crise les certitudes non fondées afin de stimuler une investigation critique autonome.",
+      synonym: "Investigation dialectique aporétique"
+    }
+  },
+  'constructivisme': {
+    debutant: {
+      definition: "Une façon d'apprendre où l'on construit soi-même ses connaissances avec ses propres expériences.",
+      example: "Comme assembler soi-même un château de Lego : on comprend mieux comment les pièces s'emboîtent en les manipulant !",
+      synonym: "Apprentissage actif / par la pratique"
+    },
+    intermediaire: {
+      definition: "Théorie de l'apprentissage selon laquelle l'élève élabore son savoir en reliant activement de nouvelles informations à ce qu'il sait déjà.",
+      example: "Face à une énigme scientifique, l'élève émet une idée, la teste et ajuste sa compréhension.",
+      synonym: "Construction cognitive active"
+    },
+    avance: {
+      definition: "Paradigme épistémologique (Piaget, Vygotski) postulant que la connaissance n'est pas transmise passivement mais construite par assimilation et accommodation.",
+      example: "L'apprenant reconfigure ses schèmes conceptuels préexistants lors d'un conflit sociocognitif.",
+      synonym: "Genèse cognitive interactionniste"
+    }
+  },
+  'maïeutique': {
+    debutant: {
+      definition: "L'art d'aider quelqu'un à trouver une bonne idée qu'il avait déjà au fond de sa tête sans le savoir.",
+      example: "Comme un ami qui te pose la bonne question et soudain tu te dis : 'Mais oui, c'est évident !'",
+      synonym: "Faire naître les idées"
+    },
+    intermediaire: {
+      definition: "Technique de questionnement socratique visant à faire 'accoucher' l'esprit des vérités qu'il porte en lui de manière implicite.",
+      example: "Dans le dialogue du Ménon, Socrate amène un jeune serviteur à démontrer un théorème de géométrie sans lui donner la formule.",
+      synonym: "Accouchement des esprits"
+    },
+    avance: {
+      definition: "Dispositif heuristique socratique procédant par questions ciblées pour extérioriser et formaliser des intuitions latentes.",
+      example: "La maïeutique postule la réminiscence ou la capacité transcendantale de l'intellect à formuler le vrai par auto-examen.",
+      synonym: "Élucidation conceptuelle maïeutique"
+    }
+  },
+  'autonomie': {
+    debutant: {
+      definition: "La capacité de réfléchir et de faire des choses par soi-même sans avoir besoin qu'on te dise tout le temps quoi faire.",
+      example: "Réussir à faire ses devoirs et comprendre ses erreurs sans attendre que quelqu'un te donne la solution.",
+      synonym: "Indépendance / se débrouiller seul"
+    },
+    intermediaire: {
+      definition: "Faculté d'agir et de penser selon ses propres règles de manière responsable et réfléchie.",
+      example: "Être capable de planifier ses révisions et d'évaluer soi-même la qualité de son travail.",
+      synonym: "Auto-détermination / libre arbitre"
+    },
+    avance: {
+      definition: "Principe éthique et intellectuel (kantien) où le sujet se donne à lui-même ses propres lois guidées par la raison critique.",
+      example: "L'émancipation intellectuelle s'oppose à l'hétéronomie des dogmes reçus sans examen rationnel.",
+      synonym: "Auto-législation rationnelle"
+    }
+  },
+  'savoir': {
+    debutant: {
+      definition: "L'ensemble des choses que l'on a apprises, comprises et que l'on peut réutiliser pour résoudre des problèmes.",
+      example: "Savoir pourquoi le ciel est bleu ou savoir comment faire du vélo.",
+      synonym: "Connaissance / bagage"
+    },
+    intermediaire: {
+      definition: "Ensemble structuré de connaissances vérifiées, assimilées et mobilisables dans un domaine précis.",
+      example: "La différence entre une simple rumeur et un savoir prouvé par des expériences scientifiques.",
+      synonym: "Connaissance acquise / compétence"
+    },
+    avance: {
+      definition: "Corpus épistémique validé intersubjectivement, distinct de la simple croyance ou de l'opinion par son exigence de justification.",
+      example: "La dialectique entre savoir théorique (épistémê) et savoir-faire pratique (technê).",
+      synonym: "Épistémè / corpus cognitif"
+    }
+  },
+  'hypothèse': {
+    debutant: {
+      definition: "Une supposition ou une idée que l'on imagine pour essayer d'expliquer quelque chose, avant de vérifier si c'est vrai.",
+      example: "Si la plante fane, mon hypothèse est qu'elle manque d'eau ; je l'arrose pour voir si c'est bien ça !",
+      synonym: "Supposition / idée à tester"
+    },
+    intermediaire: {
+      definition: "Proposition théorique provisoire formulée pour expliquer un phénomène et destinée à être confirmée ou réfutée par l'expérience.",
+      example: "En physique, formuler l'hypothèse que la masse n'influe pas sur la vitesse de chute dans le vide.",
+      synonym: "Conjecture scientifique"
+    },
+    avance: {
+      definition: "Énoncé axiomatique ou heuristique provisoire intégré dans un système hypothético-déductif soumis à la falsification empirique.",
+      example: "Selon Popper, une hypothèse scientifique doit être réfutable pour posséder une valeur heuristique.",
+      synonym: "Conjecture falsifiable"
+    }
+  },
+  'métacognition': {
+    debutant: {
+      definition: "Réfléchir à la façon dont ton propre cerveau apprend et réfléchit.",
+      example: "Te demander : 'Quelle méthode m'aide le mieux à mémoriser cette poésie ? En la lisant ou en l'écoutant ?'",
+      synonym: "Penser sur sa façon de penser"
+    },
+    intermediaire: {
+      definition: "Capacité d'analyser, de surveiller et d'adapter ses propres stratégies de pensée et d'apprentissage.",
+      example: "Se rendre compte au milieu d'un problème qu'on fait fausse route et décider de changer de méthode.",
+      synonym: "Auto-régulation des apprentissages"
+    },
+    avance: {
+      definition: "Conscience réflexive et contrôle exécutif de premier ordre exercés sur ses propres processus et représentations cognitives.",
+      example: "L'évaluation critique de ses propres biais cognitifs lors d'un processus de décision stratégique.",
+      synonym: "Monitorage cognitif réflexif"
+    }
+  }
+};
+
+// In-memory definition cache to minimize duplicate calls
+const definitionCache = new Map<string, any>();
+
+// Helper to normalize words for dictionary lookups
+function normalizeWord(raw: string): string {
+  return raw
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // remove diacritics for lookup
+    .replace(/[^\w\s-]/g, '')
+    .trim();
+}
+
+const LEVEL_CONFIG: Record<string, { label: string; desc: string; fallbackKey: 'debutant' | 'intermediaire' | 'avance' }> = {
+  debutant: {
+    label: "Débutant (Primaire / Collège)",
+    desc: "Vocabulaire simple, phrases courtes, analogies du quotidien, aucun jargon technique.",
+    fallbackKey: 'debutant'
+  },
+  intermediaire: {
+    label: "Intermédiaire (Lycée)",
+    desc: "Définition équilibrée, claire, avec des exemples d'application et des explications précises.",
+    fallbackKey: 'intermediaire'
+  },
+  avance: {
+    label: "Avancé (Enseignement supérieur)",
+    desc: "Définition conceptuelle rigoureuse, mise en perspective théorique, nuances méthodologiques.",
+    fallbackKey: 'avance'
+  }
+};
+
+// Definition endpoint adapting words to the learner's level
+app.post('/api/define', async (req, res) => {
+  const { word, context = '', level = 'debutant' } = req.body || {};
+
+  if (!word || typeof word !== 'string' || !word.trim()) {
+    return res.status(400).json({ error: 'Mot manquant' });
+  }
+
+  const cleanWord = word.trim();
+  const selectedLevel = (['debutant', 'intermediaire', 'avance'].includes(level) ? level : 'debutant') as 'debutant' | 'intermediaire' | 'avance';
+  const levelInfo = LEVEL_CONFIG[selectedLevel];
+  const cacheKey = `${selectedLevel}:${cleanWord.toLowerCase()}`;
+
+  if (definitionCache.has(cacheKey)) {
+    return res.json(definitionCache.get(cacheKey));
+  }
+
+  // Check fallback dictionary
+  const normalizedKey = normalizeWord(cleanWord);
+  for (const [dictKey, entries] of Object.entries(ADAPTIVE_FALLBACK_DICTIONARY)) {
+    if (normalizeWord(dictKey) === normalizedKey || normalizedKey.includes(normalizeWord(dictKey))) {
+      const entry = entries[selectedLevel];
+      const result = {
+        word: cleanWord,
+        level: selectedLevel,
+        levelLabel: levelInfo.label,
+        simplifiedDefinition: entry.definition,
+        analogyOrExample: entry.example,
+        simplerSynonym: entry.synonym,
+        source: 'dictionary'
+      };
+      definitionCache.set(cacheKey, result);
+      return res.json(result);
+    }
+  }
+
+  // Dynamic Gemini generation
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    // If no key configured, generate a smart pedagogical fallback
+    const fallbackResult = {
+      word: cleanWord,
+      level: selectedLevel,
+      levelLabel: levelInfo.label,
+      simplifiedDefinition: `Notion clé utilisée dans le raisonnement : "${cleanWord}" désigne un concept important pour approfondir la réflexion.`,
+      analogyOrExample: `Dans notre échange, ce terme sert à préciser l'idée suivante : "${context || cleanWord}".`,
+      simplerSynonym: cleanWord,
+      source: 'fallback'
+    };
+    return res.json(fallbackResult);
+  }
+
+  try {
+    const ai = getAiClient();
+    const prompt = `Tu es un pédagogue expert en vulgarisation linguistique et en apprentissage constructiviste.
+L'élève a cliqué sur le mot complexe ou conceptuel : "${cleanWord}".
+Contexte dans la réponse de LearnIS : "${context || cleanWord}".
+Niveau d'apprentissage actuel de l'élève : "${levelInfo.label}".
+Consigne pour ce niveau : ${levelInfo.desc}
+
+Donne une explication pédagogique bienveillante et adaptée.
+Réponds UNIQUEMENT en JSON avec la structure exacte suivante :
+{
+  "simplifiedDefinition": "Définition courte et percutante (1 à 2 phrases) adaptée au niveau",
+  "analogyOrExample": "Un exemple concret ou une analogie visuelle facile à retenir",
+  "simplerSynonym": "Un ou deux synonymes plus simples et courants"
+}`;
+
+    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+    let lastError: any = null;
+
+    for (const model of candidateModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            systemInstruction: "Tu es un tuteur pédagogique bienveillant. Réponds exclusivement en JSON strict.",
+          }
+        });
+
+        if (response.text) {
+          const parsed = JSON.parse(response.text.trim());
+          const output = {
+            word: cleanWord,
+            level: selectedLevel,
+            levelLabel: levelInfo.label,
+            simplifiedDefinition: parsed.simplifiedDefinition || `Définition simplifiée de ${cleanWord}.`,
+            analogyOrExample: parsed.analogyOrExample || `Exemple : ${cleanWord} dans notre discussion.`,
+            simplerSynonym: parsed.simplerSynonym || cleanWord,
+            source: 'gemini'
+          };
+          definitionCache.set(cacheKey, output);
+          return res.json(output);
+        }
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    throw lastError || new Error("Échec de génération");
+  } catch (error) {
+    console.warn(`[LearnIS] Échec de la définition IA pour "${cleanWord}":`, error);
+    // Graceful fallback if Gemini API had transient errors
+    const safeFallback = {
+      word: cleanWord,
+      level: selectedLevel,
+      levelLabel: levelInfo.label,
+      simplifiedDefinition: `Terme clé : "${cleanWord}" est une notion importante abordée dans notre dialogue pour structurer vos connaissances.`,
+      analogyOrExample: `Utilisé dans le contexte : "${context || cleanWord}".`,
+      simplerSynonym: cleanWord,
+      source: 'fallback'
+    };
+    definitionCache.set(cacheKey, safeFallback);
+    return res.json(safeFallback);
+  }
+});
+
 // Fallback GET / to index.html
 app.get('/', (req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
-// Google OAuth URL generation endpoint
-app.get('/api/auth/google/url', (req, res) => {
-  const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.CLIENT_ID;
-  const devUrl = 'https://ais-dev-4qlgk5dq77b37oviwxoulr-128669897305.europe-west1.run.app';
-  const sharedUrl = 'https://ais-pre-4qlgk5dq77b37oviwxoulr-128669897305.europe-west1.run.app';
-  const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-  const redirectUri = `${baseUrl}/auth/callback`;
-
-  if (!googleClientId) {
-    return res.json({
-      configured: false,
-      url: null,
-      redirectUri,
-      devCallbackUrl: `${devUrl}/auth/callback`,
-      sharedCallbackUrl: `${sharedUrl}/auth/callback`,
-      defaultUserEmail: 'kedagniarnaud999@gmail.com'
-    });
-  }
-
-  const params = new URLSearchParams({
-    client_id: googleClientId,
-    redirect_uri: redirectUri,
-    response_type: 'code',
-    scope: 'openid email profile',
-    access_type: 'offline',
-    prompt: 'select_account'
-  });
-
-  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-  return res.json({
-    configured: true,
-    url: authUrl,
-    redirectUri,
-    devCallbackUrl: `${devUrl}/auth/callback`,
-    sharedCallbackUrl: `${sharedUrl}/auth/callback`,
-    defaultUserEmail: 'kedagniarnaud999@gmail.com'
-  });
-});
-
-// Google OAuth Callback handler (Iframe / Popup compatible)
-app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
-  const code = req.query.code as string;
-  const error = req.query.error as string;
-
-  if (error || !code) {
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head><meta charset="utf-8"><title>Connexion Google</title></head>
-        <body style="font-family: system-ui, sans-serif; text-align: center; padding: 40px; color: #1e293b; background: #f8fafc;">
-          <h3 style="color: #dc2626;">Connexion Google interrompue</h3>
-          <p style="font-size: 14px; color: #64748b;">${error ? `Détail : ${error}` : 'Aucun code d\'autorisation reçu.'}</p>
-          <p style="font-size: 12px; color: #94a3b8;">Cette fenêtre va se fermer...</p>
-          <script>
-            if (window.opener) {
-              window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: '${error || 'canceled'}' }, '*');
-              setTimeout(() => window.close(), 1500);
-            } else {
-              window.location.href = '/';
-            }
-          </script>
-        </body>
-      </html>
-    `);
-  }
-
-  const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.CLIENT_ID;
-  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.CLIENT_SECRET;
-  const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-  const redirectUri = `${baseUrl}/auth/callback`;
-
-  try {
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        code,
-        client_id: googleClientId || '',
-        client_secret: googleClientSecret || '',
-        redirect_uri: redirectUri,
-        grant_type: 'authorization_code'
-      })
-    });
-
-    const tokenData = await tokenResponse.json();
-
-    if (!tokenResponse.ok || !tokenData.access_token) {
-      console.error('Erreur échange jeton Google:', tokenData);
-      return res.send(`
-        <!DOCTYPE html>
-        <html>
-          <head><meta charset="utf-8"><title>Erreur d'authentification</title></head>
-          <body style="font-family: system-ui, sans-serif; text-align: center; padding: 40px; color: #1e293b; background: #f8fafc;">
-            <h3 style="color: #dc2626;">Échec de la validation Google</h3>
-            <p style="font-size: 14px; color: #64748b;">${tokenData.error_description || tokenData.error || 'Erreur lors de l\'échange de jeton avec Google'}</p>
-            <script>
-              if (window.opener) {
-                window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: 'Token exchange failed' }, '*');
-                setTimeout(() => window.close(), 2500);
-              }
-            </script>
-          </body>
-        </html>
-      `);
-    }
-
-    // Récupération des informations du profil utilisateur depuis Google UserInfo
-    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` }
-    });
-    const userInfo = await userInfoResponse.json();
-
-    const userData = {
-      name: userInfo.name || userInfo.given_name || 'Utilisateur Google',
-      email: userInfo.email || '',
-      picture: userInfo.picture || '',
-      sub: userInfo.sub || '',
-      provider: 'google'
-    };
-
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head><meta charset="utf-8"><title>Connexion Google réussie</title></head>
-        <body style="font-family: system-ui, sans-serif; text-align: center; padding: 40px; color: #1e293b; background: #f8fafc;">
-          <div style="max-width: 400px; margin: 40px auto; background: white; padding: 28px; border-radius: 20px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.08); border: 1px solid #e2e8f0;">
-            <div style="width: 52px; height: 52px; background: #ecfdf5; color: #059669; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 26px;">✓</div>
-            <h3 style="margin: 0 0 8px; color: #0f172a; font-size: 18px;">Connexion réussie !</h3>
-            <p style="margin: 0 0 16px; color: #475569; font-size: 14px;">Bienvenue sur LearnIS, <strong>${userData.name}</strong></p>
-            <p style="margin: 0; color: #94a3b8; font-size: 12px;">Cette fenêtre va se fermer automatiquement...</p>
-          </div>
-          <script>
-            if (window.opener) {
-              window.opener.postMessage({
-                type: 'OAUTH_AUTH_SUCCESS',
-                provider: 'google',
-                user: ${JSON.stringify(userData)}
-              }, '*');
-              setTimeout(() => window.close(), 800);
-            } else {
-              window.location.href = '/';
-            }
-          </script>
-        </body>
-      </html>
-    `);
-  } catch (err: any) {
-    console.error('Erreur interne OAuth Google:', err);
-    return res.status(500).send(`
-      <!DOCTYPE html>
-      <html>
-        <head><meta charset="utf-8"><title>Erreur</title></head>
-        <body style="font-family: system-ui, sans-serif; text-align: center; padding: 40px; color: #1e293b;">
-          <h3>Erreur interne</h3>
-          <p>${err?.message}</p>
-          <script>
-            if (window.opener) {
-              window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: '${err?.message}' }, '*');
-              setTimeout(() => window.close(), 2000);
-            }
-          </script>
-        </body>
-      </html>
-    `);
-  }
-});
-
-// Chat endpoint matching the /chat contract with educational context & multimodal support
+// Chat endpoint matching the original /chat contract
 app.post('/chat', async (req, res) => {
-  const { message: userInput, history = [], context = {}, image = null } = req.body || {};
+  const { message: userInput, history = [] } = req.body || {};
 
-  if ((!userInput || typeof userInput !== 'string' || !userInput.trim()) && !image) {
-    return res.status(400).json({ error: 'Message ou image requis' });
+  if (!userInput || typeof userInput !== 'string' || !userInput.trim()) {
+    return res.status(400).json({ error: 'Message vide' });
   }
-
-  const promptText = (userInput && typeof userInput === 'string' && userInput.trim())
-    ? userInput.trim()
-    : "Que peux-tu observer et m'apprendre sur cette image ?";
 
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
@@ -401,18 +395,17 @@ app.post('/chat', async (req, res) => {
 
   try {
     const ai = getAiClient();
-    const systemInstruction = buildSystemPrompt(context);
 
-    // Reconstruct recent conversation context (last 8 messages)
+    // Reconstruct recent conversation context (last 6 messages) exactly like app.py
     let contextPrompt = `--- DÉBUT DE LA CONVERSATION ---\n`;
-    const recentHistory = Array.isArray(history) ? history.slice(-8) : [];
+    const recentHistory = Array.isArray(history) ? history.slice(-6) : [];
     for (const msg of recentHistory) {
       const role = msg.sender === 'user' ? 'Utilisateur' : 'LearnIS';
       contextPrompt += `${role}: ${msg.text}\n`;
     }
-    const fullPrompt = `${contextPrompt}\nUtilisateur: ${promptText}\nLearnIS:`;
+    const fullPrompt = `${contextPrompt}\nUtilisateur: ${userInput.trim()}\nLearnIS:`;
 
-    const aiResponse = await generateSocraticResponse(ai, fullPrompt, systemInstruction, image);
+    const aiResponse = await generateSocraticResponse(ai, fullPrompt);
     return res.json({ response: aiResponse });
   } catch (error: any) {
     console.error('Erreur API Gemini:', error);
@@ -437,250 +430,6 @@ app.post('/chat', async (req, res) => {
   }
 });
 
-// Transcription Endpoint using model gemini-3.5-transcribe
-app.post('/api/transcribe', async (req, res) => {
-  try {
-    const { audio, mimeType } = req.body || {};
-    if (!audio) {
-      return res.status(400).json({ error: "Fichier ou enregistrement audio manquant." });
-    }
-
-    const ai = getAiClient();
-    let cleanAudio = audio;
-    if (cleanAudio.includes('base64,')) {
-      cleanAudio = cleanAudio.split('base64,')[1];
-    }
-
-    const audioPart = {
-      inlineData: {
-        mimeType: mimeType || 'audio/webm',
-        data: cleanAudio,
-      },
-    };
-
-    // Primary model: gemini-3.5-transcribe
-    const candidateModels = ['gemini-3.5-transcribe', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
-    let lastError: any = null;
-    let transcript = '';
-
-    for (const model of candidateModels) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: {
-            parts: [
-              audioPart,
-              {
-                text: 'Transcris fidèlement et exactement cet enregistrement audio en français. Ne retourne QUE la transcription textuelle exacte, sans guillemets, sans commentaires et sans ajouts.',
-              },
-            ],
-          },
-        });
-
-        if (response.text) {
-          transcript = response.text.trim();
-          return res.json({ text: transcript, modelUsed: model });
-        }
-      } catch (err: any) {
-        lastError = err;
-        console.log(`[Transcribe] Modèle ${model} non disponible: ${err?.message?.slice(0, 100)}, essai modèle suivant...`);
-      }
-    }
-
-    throw lastError || new Error("Échec de la transcription audio");
-  } catch (error: any) {
-    console.error('Erreur API Transcription:', error);
-    return res.status(500).json({
-      error: error?.message || "Erreur lors de la transcription avec gemini-3.5-transcribe.",
-    });
-  }
-});
-
-// Image Creation & Editing Endpoint using gemini-3.1-flash-image-preview
-app.post('/api/images/generate', async (req, res) => {
-  try {
-    const { prompt, image, aspectRatio = '1:1' } = req.body || {};
-    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
-      return res.status(400).json({ error: "Un prompt textuel descriptif est nécessaire pour créer ou retoucher l'image." });
-    }
-
-    const ai = getAiClient();
-    const parts: any[] = [];
-
-    // If an existing image is provided, include it for editing/transformation
-    if (image && image.data) {
-      let cleanImageData = image.data;
-      if (cleanImageData.includes('base64,')) {
-        cleanImageData = cleanImageData.split('base64,')[1];
-      }
-      parts.push({
-        inlineData: {
-          data: cleanImageData,
-          mimeType: image.mimeType || 'image/png',
-        },
-      });
-    }
-
-    parts.push({ text: prompt.trim() });
-
-    // Mandated primary model: gemini-3.1-flash-image-preview
-    const candidateModels = [
-      'gemini-3.1-flash-image-preview',
-      'gemini-3.1-flash-image',
-      'gemini-3.1-flash-lite-image',
-    ];
-
-    let lastError: any = null;
-    for (const model of candidateModels) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: { parts },
-          config: {
-            imageConfig: {
-              aspectRatio: aspectRatio || '1:1',
-            },
-          },
-        });
-
-        let imageUrl: string | null = null;
-        let description = '';
-
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-          if (part.inlineData) {
-            imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-          } else if (part.text) {
-            description += part.text;
-          }
-        }
-
-        if (imageUrl) {
-          return res.json({
-            imageUrl,
-            description: description.trim(),
-            modelUsed: model,
-          });
-        }
-      } catch (err: any) {
-        lastError = err;
-        console.log(`[ImageGen] Modèle ${model} indisponible: ${err?.message?.slice(0, 100)}, tentative suivant...`);
-      }
-    }
-
-    throw lastError || new Error("Aucune image n'a pu être produite par le modèle.");
-  } catch (error: any) {
-    console.error('Erreur API Création/Retouche Image:', error);
-    return res.status(500).json({
-      error: error?.message || "Erreur lors de la génération ou retouche de l'image.",
-    });
-  }
-});
-
-// Create shared HTTP server for Express and WebSocket
-const server = http.createServer(app);
-
-// WebSocket Server for Voice Conversations using gemini-3.1-flash-live-preview (Live API)
-const wss = new WebSocketServer({ server, path: '/api/live' });
-
-wss.on('connection', async (clientWs: WebSocket) => {
-  console.log('[LiveAPI] Nouveau client connecté au flux vocal en direct');
-  let liveSession: any = null;
-
-  try {
-    const ai = getAiClient();
-    liveSession = await ai.live.connect({
-      model: 'gemini-3.1-flash-live-preview',
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } },
-        },
-        systemInstruction: `Tu es LearnIS, un tuteur socratique intelligent et chaleureux qui dialogue en direct à la voix.
-RÈGLES EN DIRECT :
-- Sois bref, vivant et concis (1 à 2 phrases courtes maximum par intervention).
-- Parle un français naturel, clair et stimulant.
-- Ne donne pas la réponse directe : pose une question brève pour faire réfléchir l'apprenant.
-- Si l'élève a compris, valide avec enthousiasme et demande-lui de reformuler sa conclusion.`,
-      },
-      callbacks: {
-        onmessage: (message: LiveServerMessage) => {
-          if (clientWs.readyState !== WebSocket.OPEN) return;
-
-          // Model spoken audio chunk (PCM 24kHz)
-          const audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-          if (audio) {
-            clientWs.send(JSON.stringify({ type: 'audio', audio }));
-          }
-
-          // Interruption event (when learner speaks over model)
-          if (message.serverContent?.interrupted) {
-            clientWs.send(JSON.stringify({ type: 'interrupted' }));
-          }
-
-          // Transcribed text from model turn if available
-          const textPart = message.serverContent?.modelTurn?.parts?.find((p) => p.text);
-          if (textPart?.text) {
-            clientWs.send(JSON.stringify({ type: 'text', text: textPart.text }));
-          }
-        },
-        onclose: () => {
-          console.log('[LiveAPI] Session Gemini Live fermée');
-          if (clientWs.readyState === WebSocket.OPEN) {
-            clientWs.send(JSON.stringify({ type: 'closed' }));
-          }
-        },
-        onerror: (err: any) => {
-          console.error('[LiveAPI] Erreur session Live:', err);
-          if (clientWs.readyState === WebSocket.OPEN) {
-            clientWs.send(JSON.stringify({ type: 'error', message: err?.message || 'Erreur Live API' }));
-          }
-        },
-      },
-    });
-
-    if (clientWs.readyState === WebSocket.OPEN) {
-      clientWs.send(JSON.stringify({ type: 'ready', model: 'gemini-3.1-flash-live-preview' }));
-    }
-
-    clientWs.on('message', (rawData: any) => {
-      try {
-        const payload = JSON.parse(rawData.toString());
-        if (payload.audio && liveSession) {
-          liveSession.sendRealtimeInput({
-            audio: { data: payload.audio, mimeType: 'audio/pcm;rate=16000' },
-          });
-        } else if (payload.text && liveSession) {
-          liveSession.sendRealtimeInput({
-            text: payload.text,
-          });
-        }
-      } catch (e) {
-        console.error('[LiveAPI] Erreur traitement message client:', e);
-      }
-    });
-
-    clientWs.on('close', () => {
-      console.log('[LiveAPI] Client déconnecté');
-      if (liveSession) {
-        try {
-          liveSession.close();
-        } catch (e) {}
-      }
-    });
-  } catch (err: any) {
-    console.error('[LiveAPI] Échec initialisation connect Live API:', err);
-    if (clientWs.readyState === WebSocket.OPEN) {
-      clientWs.send(
-        JSON.stringify({
-          type: 'error',
-          message: err?.message || 'Impossible d\'initialiser la session vocale Live',
-        })
-      );
-      clientWs.close();
-    }
-  }
-});
-
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Serveur LearnIS démarré avec Express & Live API WebSocket sur http://0.0.0.0:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Serveur LearnIS démarré sur http://0.0.0.0:${PORT}`);
 });
