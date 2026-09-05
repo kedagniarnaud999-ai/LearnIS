@@ -13,8 +13,8 @@ app.secret_key = os.getenv("SECRET_KEY", "cle_secrete_par_defaut_change_en_prod"
 api_key = os.getenv("GOOGLE_API_KEY")
 if api_key:
     genai.configure(api_key=api_key)
-    # Utilisation du modèle flash 1.5 (rapide, gratuit et compatible)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Utilisation de 'gemini-pro' qui est stable et supporte parfaitement le contexte long
+model = genai.GenerativeModel('gemini-pro')
 else:
     print("⚠️ ATTENTION: Clé API GOOGLE_API_KEY non trouvée dans les variables d'environnement.")
     model = None
