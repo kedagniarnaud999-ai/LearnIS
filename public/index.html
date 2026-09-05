@@ -27,7 +27,7 @@
 
     <!-- Header -->
     <header class="bg-white shadow-sm p-4 z-10 border-b border-gray-200">
-        <div class="max-w-5xl mx-auto flex items-center justify-between">
+        <div class="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-3">
             <div class="flex items-center gap-3">
                 <div class="bg-blue-600 text-white p-2 rounded-lg shadow-md">
                     <i class="fas fa-brain text-xl"></i>
@@ -37,9 +37,15 @@
                     <p class="text-xs text-blue-600 font-medium">Tuteur Socratique & Constructiviste</p>
                 </div>
             </div>
-            <button onclick="clearChat()" class="text-sm text-gray-500 hover:text-red-600 transition font-medium flex items-center gap-2 bg-gray-100 hover:bg-red-50 px-3 py-2 rounded-full">
-                <i class="fas fa-plus"></i> Nouveau Sujet
-            </button>
+            <div class="flex items-center gap-2">
+                <button id="auto-speak-btn" onclick="toggleAutoSpeak()" class="text-xs text-gray-600 hover:text-blue-600 font-medium flex items-center gap-1.5 bg-gray-100 hover:bg-blue-50 px-3 py-2 rounded-full transition border border-transparent hover:border-blue-200" title="Activer ou désactiver la lecture vocale automatique">
+                    <i id="auto-speak-icon" class="fas fa-volume-mute text-gray-400"></i>
+                    <span id="auto-speak-label">Voix auto : Désactivée</span>
+                </button>
+                <button onclick="clearChat()" class="text-sm text-gray-500 hover:text-red-600 transition font-medium flex items-center gap-2 bg-gray-100 hover:bg-red-50 px-3 py-2 rounded-full">
+                    <i class="fas fa-plus"></i> Nouveau Sujet
+                </button>
+            </div>
         </div>
     </header>
 
@@ -52,7 +58,13 @@
                     <i class="fas fa-robot"></i>
                 </div>
                 <div class="message-ai p-5 shadow-sm max-w-[90%] md:max-w-[80%] border border-gray-100">
-                    <p class="text-base leading-relaxed prose">Bonjour ! Je suis <strong>LearnIS</strong>. Mon but n'est pas de te donner des réponses toutes faites, mais de t'aider à construire ton propre savoir.<br><br>Quel sujet veux-tu explorer aujourd'hui ? Dis-moi ce que tu en sais déjà.</p>
+                    <div class="text-base leading-relaxed prose">Bonjour ! Je suis <strong>LearnIS</strong>. Mon but n'est pas de te donner des réponses toutes faites, mais de t'aider à construire ton propre savoir.<br><br>Quel sujet veux-tu explorer aujourd'hui ? Dis-moi ce que tu en sais déjà.</div>
+                    <div class="mt-3 pt-2 border-t border-gray-200/60 flex items-center justify-between">
+                        <button onclick="speakMessage(this)" class="tts-btn inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-blue-600 bg-white hover:bg-blue-50 border border-gray-200 hover:border-blue-200 px-3 py-1 rounded-full transition shadow-xs" title="Écouter la réponse">
+                            <i class="fas fa-volume-up"></i>
+                            <span>Écouter</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -82,6 +94,121 @@
         const sendBtn = document.getElementById('send-btn');
         let messageHistory = [];
 
+        // Web Speech API State
+        let currentSpeakingBtn = null;
+        let autoSpeakEnabled = false;
+
+        function getFrenchVoice() {
+            if (!('speechSynthesis' in window)) return null;
+            const voices = window.speechSynthesis.getVoices();
+            // Prioritize French voices (e.g., fr-FR, fr-CA, fr)
+            return voices.find(v => v.lang && (v.lang === 'fr-FR' || v.lang.toLowerCase().startsWith('fr'))) || null;
+        }
+
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.onvoiceschanged = () => {
+                getFrenchVoice();
+            };
+        }
+
+        function stripFormatting(text) {
+            return text
+                .replace(/<[^>]*>/g, ' ')
+                .replace(/\*\*(.*?)\*\*/g, '$1')
+                .replace(/\*(.*?)\*/g, '$1')
+                .replace(/`([^`]+)`/g, '$1')
+                .replace(/#+\s+/g, '')
+                .replace(/[-*]\s+/g, '')
+                .replace(/\n+/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function stopSpeaking() {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+            }
+            if (currentSpeakingBtn) {
+                currentSpeakingBtn.innerHTML = '<i class="fas fa-volume-up"></i> <span>Écouter</span>';
+                currentSpeakingBtn.className = 'tts-btn inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-blue-600 bg-white hover:bg-blue-50 border border-gray-200 hover:border-blue-200 px-3 py-1 rounded-full transition shadow-xs';
+                currentSpeakingBtn = null;
+            }
+        }
+
+        function speakText(rawText, btnElement = null) {
+            if (!('speechSynthesis' in window)) {
+                alert("La synthèse vocale n'est pas prise en charge par votre navigateur.");
+                return;
+            }
+
+            // If already speaking with this button, clicking again stops speech
+            if (currentSpeakingBtn === btnElement && window.speechSynthesis.speaking) {
+                stopSpeaking();
+                return;
+            }
+
+            stopSpeaking();
+
+            const cleanText = stripFormatting(rawText);
+            if (!cleanText) return;
+
+            const utterance = new SpeechSynthesisUtterance(cleanText);
+            utterance.lang = 'fr-FR';
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+
+            const frVoice = getFrenchVoice();
+            if (frVoice) {
+                utterance.voice = frVoice;
+            }
+
+            if (btnElement) {
+                currentSpeakingBtn = btnElement;
+                btnElement.innerHTML = '<i class="fas fa-stop text-red-500 animate-pulse"></i> <span class="text-red-600 font-semibold">Arrêter</span>';
+                btnElement.className = 'tts-btn inline-flex items-center gap-1.5 text-xs bg-red-50 text-red-600 border border-red-200 px-3 py-1 rounded-full transition shadow-xs';
+            }
+
+            utterance.onend = () => {
+                stopSpeaking();
+            };
+
+            utterance.onerror = (e) => {
+                // Ignore cancel interruptions
+                if (e.error !== 'canceled' && e.error !== 'interrupted') {
+                    console.warn('Erreur synthèse vocale:', e);
+                }
+                stopSpeaking();
+            };
+
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function speakMessage(btn) {
+            const card = btn.closest('.message-ai');
+            if (!card) return;
+            const prose = card.querySelector('.prose');
+            const text = prose ? prose.innerText : '';
+            speakText(text, btn);
+        }
+
+        function toggleAutoSpeak() {
+            autoSpeakEnabled = !autoSpeakEnabled;
+            const icon = document.getElementById('auto-speak-icon');
+            const label = document.getElementById('auto-speak-label');
+            const btn = document.getElementById('auto-speak-btn');
+
+            if (autoSpeakEnabled) {
+                icon.className = 'fas fa-volume-up text-blue-600';
+                label.textContent = 'Voix auto : Activée';
+                btn.className = 'text-xs text-blue-700 font-medium flex items-center gap-1.5 bg-blue-50 px-3 py-2 rounded-full transition border border-blue-200 shadow-xs';
+            } else {
+                stopSpeaking();
+                icon.className = 'fas fa-volume-mute text-gray-400';
+                label.textContent = 'Voix auto : Désactivée';
+                btn.className = 'text-xs text-gray-600 hover:text-blue-600 font-medium flex items-center gap-1.5 bg-gray-100 hover:bg-blue-50 px-3 py-2 rounded-full transition border border-transparent hover:border-blue-200';
+            }
+        }
+
         function handleEnter(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -105,14 +232,32 @@
             let formattedText = text.replace(/\n/g, '<br>');
             formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 
+            const ttsToolbar = !isUser ? `
+                <div class="mt-3 pt-2 border-t border-gray-200/60 flex items-center justify-between">
+                    <button onclick="speakMessage(this)" class="tts-btn inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-blue-600 bg-white hover:bg-blue-50 border border-gray-200 hover:border-blue-200 px-3 py-1 rounded-full transition shadow-xs" title="Écouter la réponse">
+                        <i class="fas fa-volume-up"></i>
+                        <span>Écouter</span>
+                    </button>
+                </div>
+            ` : '';
+
             div.innerHTML = `
                 ${avatar}
                 <div class="${bubbleClass} p-5 shadow-sm ${maxWidth} border border-gray-100">
                     <div class="text-base leading-relaxed prose">${formattedText}</div>
+                    ${ttsToolbar}
                 </div>
             `;
             chatBox.appendChild(div);
             chatBox.scrollTop = chatBox.scrollHeight;
+
+            // Auto-speak if enabled for incoming AI responses
+            if (!isUser && autoSpeakEnabled) {
+                const btn = div.querySelector('.tts-btn');
+                if (btn) {
+                    speakMessage(btn);
+                }
+            }
         }
 
         function showTyping() {
@@ -134,20 +279,51 @@
             if (el) el.remove();
         }
 
-        async function sendMessage() {
-            const text = userInput.value.trim();
+        function appendErrorMessage(errorText, userText) {
+            const div = document.createElement('div');
+            div.className = 'flex gap-4 animate-fade-in';
+            const escapedText = encodeURIComponent(userText);
+            div.innerHTML = `
+                <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 text-amber-600 shadow-sm">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div class="p-5 shadow-sm max-w-[90%] md:max-w-[80%] border border-amber-200 bg-amber-50 text-amber-900 rounded-2xl">
+                    <div class="text-base leading-relaxed prose">⚠️ ${errorText}</div>
+                    <button onclick="retryMessage('${escapedText}')" class="mt-3 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition">
+                        <i class="fas fa-redo"></i> Réessayer
+                    </button>
+                </div>
+            `;
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function retryMessage(encodedText) {
+            const text = decodeURIComponent(encodedText);
+            sendMessage(text);
+        }
+
+        async function sendMessage(retryText = null) {
+            const text = (retryText !== null ? retryText : userInput.value).trim();
             if (!text) return;
 
+            // Stop any active speech when sending a new message
+            stopSpeaking();
+
             // UI Update
-            appendMessage('user', text);
-            userInput.value = '';
-            userInput.style.height = 'auto'; // Reset height
+            if (retryText === null) {
+                appendMessage('user', text);
+                userInput.value = '';
+                userInput.style.height = 'auto'; // Reset height
+            }
             userInput.disabled = true;
             sendBtn.disabled = true;
             showTyping();
 
             // Ajout à l'historique local
-            messageHistory.push({ sender: 'user', text: text });
+            if (retryText === null) {
+                messageHistory.push({ sender: 'user', text: text });
+            }
 
             try {
                 const response = await fetch('/chat', {
@@ -163,11 +339,13 @@
                     appendMessage('ai', data.response);
                     messageHistory.push({ sender: 'ai', text: data.response });
                 } else if (data.error) {
-                    appendMessage('ai', "⚠️ <strong>Erreur :</strong> " + data.error);
+                    messageHistory.pop();
+                    appendErrorMessage(data.error, text);
                 }
             } catch (error) {
                 removeTyping();
-                appendMessage('ai', "⚠️ <strong>Erreur de connexion :</strong> Impossible de joindre le serveur.");
+                messageHistory.pop();
+                appendErrorMessage("Impossible de joindre le serveur. Veuillez vérifier votre connexion et réessayer.", text);
                 console.error(error);
             } finally {
                 userInput.disabled = false;
@@ -178,6 +356,7 @@
 
         function clearChat() {
             if(confirm("Voulez-vous vraiment recommencer un nouveau sujet ? L'historique actuel sera effacé.")) {
+                stopSpeaking();
                 messageHistory = [];
                 chatBox.innerHTML = '';
                 appendMessage('ai', "Nouveau sujet commencé. Que veux-tu apprendre aujourd'hui ?");

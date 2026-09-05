@@ -6,7 +6,9 @@ import { GoogleGenAI } from '@google/genai';
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.DEFAULT_APP_PORT
+  ? Number(process.env.DEFAULT_APP_PORT)
+  : (process.env.PORT ? Number(process.env.PORT) : 3000);
 
 app.use(express.json());
 
@@ -66,6 +68,34 @@ function getAiClient(): GoogleGenAI {
   return aiClient;
 }
 
+// Helper for resilient generation with retries and fallback models
+async function generateSocraticResponse(ai: GoogleGenAI, fullPrompt: string): Promise<string> {
+  const candidateModels = ['gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+  let lastError: any = null;
+
+  for (const model of candidateModels) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: fullPrompt,
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+        },
+      });
+
+      if (response.text) {
+        return response.text;
+      }
+    } catch (err: any) {
+      lastError = err;
+      const errMsg = err?.message || String(err);
+      console.warn(`[LearnIS] Modèle ${model} a échoué (${errMsg}), tentative avec le modèle suivant...`);
+    }
+  }
+
+  throw lastError;
+}
+
 // Fallback GET / to index.html
 app.get('/', (req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
@@ -98,19 +128,28 @@ app.post('/chat', async (req, res) => {
     }
     const fullPrompt = `${contextPrompt}\nUtilisateur: ${userInput.trim()}\nLearnIS:`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents: fullPrompt,
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-      },
-    });
-
-    const aiResponse = response.text || "Je n'ai pas pu formuler de réponse. Peux-tu reformuler ta pensée ?";
+    const aiResponse = await generateSocraticResponse(ai, fullPrompt);
     return res.json({ response: aiResponse });
   } catch (error: any) {
     console.error('Erreur API Gemini:', error);
-    return res.status(500).json({ error: `Erreur interne: ${error.message || String(error)}` });
+    const errMsg = error?.message || String(error);
+    const isTransient =
+      errMsg.includes('503') ||
+      errMsg.includes('429') ||
+      errMsg.includes('high demand') ||
+      errMsg.includes('UNAVAILABLE') ||
+      errMsg.includes('overloaded');
+
+    if (isTransient) {
+      return res.json({
+        response:
+          "Le service de tuteur IA connaît actuellement une forte demande temporaire sur les serveurs de Google. Merci de patienter quelques secondes puis de renvoyer votre message.",
+      });
+    }
+
+    return res.status(500).json({
+      error: "Une erreur temporaire est survenue lors de la communication avec l'IA. Veuillez réessayer dans un instant.",
+    });
   }
 });
 
