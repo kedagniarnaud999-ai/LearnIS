@@ -1,111 +1,200 @@
-import os
-import google.generativeai as genai
-from flask import Flask, render_template, request, jsonify
-from dotenv import load_dotenv
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LearnIS - Tuteur Intelligent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .chat-scroll::-webkit-scrollbar { width: 6px; }
+        .chat-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; }
+        .typing-dot { animation: typing 1.4s infinite ease-in-out both; }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+    </style>
+</head>
+<body class="bg-slate-50 h-screen flex flex-col text-slate-800">
 
-# Charger les variables d'environnement
-load_dotenv()
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm z-10">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-md">
+                <i class="fas fa-brain text-lg"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-xl tracking-tight text-slate-900">LearnIS</h1>
+                <p class="text-xs text-slate-500 font-medium">Méthode Socratique & Constructiviste</p>
+            </div>
+        </div>
+        <button onclick="resetChat()" class="text-sm font-medium text-slate-500 hover:text-red-600 transition-colors flex items-center gap-2 bg-slate-100 hover:bg-red-50 px-3 py-2 rounded-lg">
+            <i class="fas fa-redo"></i> Nouveau Sujet
+        </button>
+    </header>
 
-app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "cle_secrete_par_defaut_change_en_prod")
+    <!-- Zone de Chat -->
+    <main class="flex-1 overflow-y-auto chat-scroll p-4 md:p-6" id="chat-container">
+        <div class="max-w-3xl mx-auto space-y-6" id="chat-box">
+            
+            <!-- Message de bienvenue -->
+            <div class="flex gap-4 animate-fade-in">
+                <div class="w-8 h-8 rounded-full bg-indigo-100 flex-shrink-0 flex items-center justify-center text-indigo-600 mt-1">
+                    <i class="fas fa-robot text-xs"></i>
+                </div>
+                <div class="bg-white p-5 rounded-2xl rounded-tl-none shadow-sm border border-slate-100 max-w-[85%]">
+                    <p class="text-sm leading-relaxed text-slate-700">
+                        Bonjour ! Je suis <strong>LearnIS</strong>. Mon but n'est pas de te donner des réponses toutes faites, mais de t'aider à construire ton propre savoir.<br><br>
+                        Sur quel sujet veux-tu travailler aujourd'hui ? Dis-moi ce que tu en sais déjà ou quelle est ta première intuition.
+                    </p>
+                </div>
+            </div>
 
-# Configuration de l'API Google Gemini
-api_key = os.getenv("GOOGLE_API_KEY")
+        </div>
+    </main>
 
-if api_key:
-    genai.configure(api_key=api_key)
-    # Utilisation du modèle flash 1.5 (rapide et compatible)
-    try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
-    except Exception as e:
-        print(f"Erreur lors du chargement du modèle: {e}")
-        model = None
-else:
-    print("⚠️ ATTENTION: Clé API GOOGLE_API_KEY non trouvée.")
-    model = None
+    <!-- Zone de Saisie -->
+    <footer class="bg-white border-t border-slate-200 p-4 md:p-6">
+        <div class="max-w-3xl mx-auto relative flex items-end gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-200 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100 transition-all shadow-sm">
+            <textarea 
+                id="user-input" 
+                rows="1" 
+                class="w-full bg-transparent border-0 focus:ring-0 resize-none py-3 px-4 max-h-32 text-sm text-slate-800 placeholder-slate-400"
+                placeholder="Écris ta réflexion ou pose ta question..."
+                oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"
+                onkeydown="handleEnter(event)"
+            ></textarea>
+            <button 
+                onclick="sendMessage()" 
+                id="send-btn"
+                class="mb-1 w-10 h-10 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl flex items-center justify-center transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+            >
+                <i class="fas fa-paper-plane text-sm"></i>
+            </button>
+        </div>
+        <p class="text-center text-xs text-slate-400 mt-3">
+            LearnIS vérifie ta compréhension avant de t'aider à formaliser.
+        </p>
+    </footer>
 
-# Prompt Système : Logique Pédagogique Avancée
-SYSTEM_PROMPT = """
-Tu es LearnIS, un tuteur intelligent basé sur la méthode socratique et le constructivisme.
-TON OBJECTIF : Développer la pensée critique, l'autonomie intellectuelle et la capacité de rédaction de l'apprenant.
+    <script>
+        const chatBox = document.getElementById('chat-box');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        let history = [];
 
-PHILOSOPHIE D'INTERACTION EN 3 PHASES OBLIGATOIRES :
+        function handleEnter(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        }
 
-PHASE 1 : EXPLORATION & CONSTRUCTION DU SAVOIR (Priorité Absolue)
-- NE DONNE JAMAIS la réponse directe, la solution ou le texte final dès le début.
-- Commence par évaluer les connaissances préalables ("Que sais-tu déjà ?", "Quelle est ton opinion ?").
-- Guide par des questions ouvertes, des contre-exemples et des pièges subtils pour tester la vigilance.
-- Assure-toi que l'utilisateur a exprimé sa propre compréhension et formulé ses idées clairement.
-- Si l'utilisateur demande la réponse, refuse poliment mais propose une piste de réflexion.
+        function appendMessage(role, text) {
+            const isUser = role === 'user';
+            const div = document.createElement('div');
+            div.className = `flex gap-4 ${isUser ? 'flex-row-reverse' : ''}`;
+            
+            const avatar = isUser 
+                ? `<div class="w-8 h-8 rounded-full bg-slate-200 flex-shrink-0 flex items-center justify-center text-slate-600 mt-1"><i class="fas fa-user text-xs"></i></div>`
+                : `<div class="w-8 h-8 rounded-full bg-indigo-100 flex-shrink-0 flex items-center justify-center text-indigo-600 mt-1"><i class="fas fa-robot text-xs"></i></div>`;
+            
+            const bubbleClass = isUser 
+                ? 'bg-indigo-600 text-white rounded-tr-none' 
+                : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none shadow-sm';
 
-PHASE 2 : VALIDATION DE LA COMPRÉHENSION
-- Avant toute aide à la rédaction, vérifie que l'utilisateur a atteint un niveau de compréhension satisfaisant.
-- Pose des questions de validation : "Es-tu sûr de ce point ?", "Comment justifies-tu cette opinion ?".
-- Ne passe à la phase 3 QUE SI l'utilisateur démontre qu'il a assimilé le sujet et qu'il a produit un contenu brut pertinent.
+            // Formatage simple du texte (gras, sauts de ligne)
+            let formattedText = text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n/g, '<br>');
 
-PHASE 3 : REFORMULATION & FORMALISATION (Sur Demande Explicite ou Validation)
-- UNE FOIS LA COMPRÉHENSION VALIDÉE : Tu peux alors proposer des reformulations pour améliorer le style, la clarté ou la structure.
-- Tu peux suggérer un formatage final (plan de document, structure académique, mise en forme Markdown) pour aider l'utilisateur à finaliser SON travail.
-- Important : Même ici, ne rédige pas tout le document d'un bloc. Propose des paragraphes types ou des structures que l'utilisateur devra adapter et valider.
-- Ton rôle est celui d'un éditeur expert qui polit un diamant déjà taillé par l'apprenant, pas celui qui taille le diamant à sa place.
+            div.innerHTML = `
+                ${avatar}
+                <div class="${bubbleClass} p-5 rounded-2xl max-w-[85%] text-sm leading-relaxed overflow-hidden">
+                    ${formattedText}
+                </div>
+            `;
+            chatBox.appendChild(div);
+            scrollToBottom();
+        }
 
-TON GÉNÉRAL :
-- Bienveillant, encourageant, mais exigeant sur la rigueur intellectuelle.
-- Confiant et direct (évite les "je pense que", "peut-être").
-- Adaptable : Si l'utilisateur est bloqué, sois plus guidant. S'il est avancé, sois plus challenger.
-"""
+        function showTyping() {
+            const div = document.createElement('div');
+            div.id = 'typing-indicator';
+            div.className = 'flex gap-4';
+            div.innerHTML = `
+                <div class="w-8 h-8 rounded-full bg-indigo-100 flex-shrink-0 flex items-center justify-center text-indigo-600 mt-1"><i class="fas fa-robot text-xs"></i></div>
+                <div class="bg-white border border-slate-100 p-4 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-1 h-12">
+                    <div class="w-2 h-2 bg-slate-400 rounded-full typing-dot"></div>
+                    <div class="w-2 h-2 bg-slate-400 rounded-full typing-dot"></div>
+                    <div class="w-2 h-2 bg-slate-400 rounded-full typing-dot"></div>
+                </div>
+            `;
+            chatBox.appendChild(div);
+            scrollToBottom();
+        }
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+        function removeTyping() {
+            const el = document.getElementById('typing-indicator');
+            if (el) el.remove();
+        }
 
-@app.route('/chat', methods=['POST'])
-def chat():
-    data = request.json
-    user_input = data.get('message')
-    history = data.get('history', [])
+        function scrollToBottom() {
+            const container = document.getElementById('chat-container');
+            container.scrollTop = container.scrollHeight;
+        }
 
-    if not user_input:
-        return jsonify({"error": "Message vide"}), 400
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
 
-    if not model:
-        error_msg = "Erreur de configuration : La clé API Gemini n'est pas définie ou le modèle est indisponible."
-        if not api_key:
-            error_msg += " (Clé API manquante dans les variables d'environnement Render)"
-        return jsonify({"response": error_msg}), 500
+            // UI Update
+            appendMessage('user', text);
+            userInput.value = '';
+            userInput.style.height = 'auto';
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+            showTyping();
 
-    try:
-        # Démarrage d'une session de chat avec historique
-        chat_session = model.start_chat(history=[])
-        
-        # Construction du contexte complet
-        # On injecte le prompt système comme premier message implicite du contexte
-        context_prompt = f"{SYSTEM_PROMPT}\n\n--- DÉBUT DE LA CONVERSATION ---\n"
-        
-        # Ajout de l'historique récent (les 6 derniers échanges pour garder le contexte sans saturer)
-        recent_history = history[-6:] 
-        for msg in recent_history:
-            role = "Utilisateur" if msg['sender'] == 'user' else "LearnIS"
-            context_prompt += f"{role}: {msg['text']}\n"
-        
-        # Message actuel
-        full_prompt = f"{context_prompt}\nUtilisateur: {user_input}\nLearnIS:"
+            // Historique
+            history.push({ sender: 'user', text: text });
 
-        # Envoi à l'API
-        response = chat_session.send_message(full_prompt)
-        ai_response = response.text
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text, history: history })
+                });
 
-        return jsonify({"response": ai_response})
+                const data = await response.json();
+                removeTyping();
 
-    except Exception as e:
-        print(f"Erreur API Gemini: {str(e)}")
-        # Gestion d'erreur plus détaillée pour le débogage
-        error_detail = str(e)
-        if "404" in error_detail or "model" in error_detail.lower():
-            return jsonify({"response": "Erreur de modèle : Le modèle spécifié est introuvable ou indisponible. Vérifiez le nom du modèle dans le code."}), 500
-        
-        return jsonify({"error": f"Erreur interne: {error_detail}"}), 500
+                if (data.response) {
+                    appendMessage('ai', data.response);
+                    history.push({ sender: 'ai', text: data.response });
+                } else if (data.error) {
+                    appendMessage('ai', `⚠️ Erreur : ${data.error}`);
+                }
+            } catch (error) {
+                removeTyping();
+                appendMessage('ai', "⚠️ Erreur de connexion au serveur.");
+                console.error(error);
+            } finally {
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                userInput.focus();
+            }
+        }
 
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+        function resetChat() {
+            if(confirm("Voulez-vous vraiment effacer cette conversation et commencer un nouveau sujet ?")) {
+                history = [];
+                chatBox.innerHTML = '';
+                appendMessage('ai', "Nouvelle session démarrée. Quel sujet veux-tu explorer aujourd'hui ?");
+            }
+        }
+    </script>
+</body>
+</html>
