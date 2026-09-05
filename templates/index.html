@@ -5,85 +5,79 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LearnIS - Tuteur Intelligent</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        .chat-scroll::-webkit-scrollbar { width: 6px; }
-        .chat-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; }
-        .typing-dot { animation: typing 1.4s infinite ease-in-out both; }
-        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
-        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        .chat-container { height: calc(100vh - 140px); }
+        .message-user { background-color: #2563eb; color: white; border-radius: 18px 18px 4px 18px; }
+        .message-ai { background-color: #f3f4f6; color: #1f2937; border-radius: 18px 18px 18px 4px; }
+        .typing-indicator span { display: inline-block; width: 6px; height: 6px; background-color: #9ca3af; border-radius: 50%; animation: typing 1.4s infinite ease-in-out both; margin: 0 2px; }
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
         @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+        /* Style pour le rendu Markdown simple */
+        .prose p { margin-bottom: 0.5rem; }
+        .prose ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.5rem; }
+        .prose strong { font-weight: 600; }
     </style>
 </head>
-<body class="bg-slate-50 h-screen flex flex-col text-slate-800">
+<body class="bg-gray-50 font-sans text-gray-800 h-screen flex flex-col">
 
     <!-- Header -->
-    <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm z-10">
-        <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-md">
-                <i class="fas fa-brain text-lg"></i>
+    <header class="bg-white shadow-sm p-4 z-10 border-b border-gray-200">
+        <div class="max-w-5xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 text-white p-2 rounded-lg shadow-md">
+                    <i class="fas fa-brain text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-xl leading-tight text-gray-900">LearnIS</h1>
+                    <p class="text-xs text-blue-600 font-medium">Tuteur Socratique & Constructiviste</p>
+                </div>
             </div>
-            <div>
-                <h1 class="font-bold text-xl tracking-tight text-slate-900">LearnIS</h1>
-                <p class="text-xs text-slate-500 font-medium">Méthode Socratique & Constructiviste</p>
-            </div>
+            <button onclick="clearChat()" class="text-sm text-gray-500 hover:text-red-600 transition font-medium flex items-center gap-2 bg-gray-100 hover:bg-red-50 px-3 py-2 rounded-full">
+                <i class="fas fa-plus"></i> Nouveau Sujet
+            </button>
         </div>
-        <button onclick="resetChat()" class="text-sm font-medium text-slate-500 hover:text-red-600 transition-colors flex items-center gap-2 bg-slate-100 hover:bg-red-50 px-3 py-2 rounded-lg">
-            <i class="fas fa-redo"></i> Nouveau Sujet
-        </button>
     </header>
 
-    <!-- Zone de Chat -->
-    <main class="flex-1 overflow-y-auto chat-scroll p-4 md:p-6" id="chat-container">
-        <div class="max-w-3xl mx-auto space-y-6" id="chat-box">
-            
+    <!-- Chat Area -->
+    <main class="flex-1 overflow-y-auto p-4 md:p-6">
+        <div id="chat-box" class="max-w-5xl mx-auto space-y-6 pb-4">
             <!-- Message de bienvenue -->
             <div class="flex gap-4 animate-fade-in">
-                <div class="w-8 h-8 rounded-full bg-indigo-100 flex-shrink-0 flex items-center justify-center text-indigo-600 mt-1">
-                    <i class="fas fa-robot text-xs"></i>
+                <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-blue-600 shadow-sm">
+                    <i class="fas fa-robot"></i>
                 </div>
-                <div class="bg-white p-5 rounded-2xl rounded-tl-none shadow-sm border border-slate-100 max-w-[85%]">
-                    <p class="text-sm leading-relaxed text-slate-700">
-                        Bonjour ! Je suis <strong>LearnIS</strong>. Mon but n'est pas de te donner des réponses toutes faites, mais de t'aider à construire ton propre savoir.<br><br>
-                        Sur quel sujet veux-tu travailler aujourd'hui ? Dis-moi ce que tu en sais déjà ou quelle est ta première intuition.
-                    </p>
+                <div class="message-ai p-5 shadow-sm max-w-[90%] md:max-w-[80%] border border-gray-100">
+                    <p class="text-base leading-relaxed prose">Bonjour ! Je suis <strong>LearnIS</strong>. Mon but n'est pas de te donner des réponses toutes faites, mais de t'aider à construire ton propre savoir.<br><br>Quel sujet veux-tu explorer aujourd'hui ? Dis-moi ce que tu en sais déjà.</p>
                 </div>
             </div>
-
         </div>
     </main>
 
-    <!-- Zone de Saisie -->
-    <footer class="bg-white border-t border-slate-200 p-4 md:p-6">
-        <div class="max-w-3xl mx-auto relative flex items-end gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-200 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100 transition-all shadow-sm">
-            <textarea 
-                id="user-input" 
-                rows="1" 
-                class="w-full bg-transparent border-0 focus:ring-0 resize-none py-3 px-4 max-h-32 text-sm text-slate-800 placeholder-slate-400"
-                placeholder="Écris ta réflexion ou pose ta question..."
-                oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"
-                onkeydown="handleEnter(event)"
-            ></textarea>
-            <button 
-                onclick="sendMessage()" 
-                id="send-btn"
-                class="mb-1 w-10 h-10 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl flex items-center justify-center transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-            >
-                <i class="fas fa-paper-plane text-sm"></i>
+    <!-- Input Area -->
+    <footer class="bg-white border-t border-gray-200 p-4 md:p-6">
+        <div class="max-w-5xl mx-auto flex gap-3 items-end">
+            <div class="flex-1 relative">
+                <textarea id="user-input" rows="1"
+                    class="w-full border border-gray-300 rounded-2xl px-5 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition shadow-sm resize-none max-h-32"
+                    placeholder="Écris ta question ou ta réflexion ici..."
+                    oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"
+                    onkeydown="handleEnter(event)"></textarea>
+            </div>
+            <button onclick="sendMessage()" id="send-btn"
+                class="bg-blue-600 hover:bg-blue-700 text-white rounded-full w-14 h-14 flex items-center justify-center transition shadow-lg hover:shadow-xl transform hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+                <i class="fas fa-paper-plane text-xl"></i>
             </button>
         </div>
-        <p class="text-center text-xs text-slate-400 mt-3">
-            LearnIS vérifie ta compréhension avant de t'aider à formaliser.
-        </p>
+        <p class="text-center text-xs text-gray-400 mt-3">LearnIS favorise l'autonomie intellectuelle. Les réponses sont générées par IA.</p>
     </footer>
 
     <script>
         const chatBox = document.getElementById('chat-box');
         const userInput = document.getElementById('user-input');
         const sendBtn = document.getElementById('send-btn');
-        let history = [];
+        let messageHistory = [];
 
         function handleEnter(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -92,58 +86,49 @@
             }
         }
 
-        function appendMessage(role, text) {
-            const isUser = role === 'user';
+        function appendMessage(sender, text) {
+            const isUser = sender === 'user';
             const div = document.createElement('div');
-            div.className = `flex gap-4 ${isUser ? 'flex-row-reverse' : ''}`;
+            div.className = `flex gap-4 ${isUser ? 'flex-row-reverse' : ''} animate-fade-in`;
             
             const avatar = isUser 
-                ? `<div class="w-8 h-8 rounded-full bg-slate-200 flex-shrink-0 flex items-center justify-center text-slate-600 mt-1"><i class="fas fa-user text-xs"></i></div>`
-                : `<div class="w-8 h-8 rounded-full bg-indigo-100 flex-shrink-0 flex items-center justify-center text-indigo-600 mt-1"><i class="fas fa-robot text-xs"></i></div>`;
+                ? `<div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 text-gray-600 shadow-sm"><i class="fas fa-user"></i></div>`
+                : `<div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-blue-600 shadow-sm"><i class="fas fa-robot"></i></div>`;
             
-            const bubbleClass = isUser 
-                ? 'bg-indigo-600 text-white rounded-tr-none' 
-                : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none shadow-sm';
-
-            // Formatage simple du texte (gras, sauts de ligne)
-            let formattedText = text
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\n/g, '<br>');
+            const bubbleClass = isUser ? 'message-user' : 'message-ai';
+            const maxWidth = isUser ? 'max-w-[85%] md:max-w-[75%]' : 'max-w-[90%] md:max-w-[80%]';
+            
+            // Conversion simple des sauts de ligne et gras pour l'affichage
+            let formattedText = text.replace(/\n/g, '<br>');
+            formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 
             div.innerHTML = `
                 ${avatar}
-                <div class="${bubbleClass} p-5 rounded-2xl max-w-[85%] text-sm leading-relaxed overflow-hidden">
-                    ${formattedText}
+                <div class="${bubbleClass} p-5 shadow-sm ${maxWidth} border border-gray-100">
+                    <div class="text-base leading-relaxed prose">${formattedText}</div>
                 </div>
             `;
             chatBox.appendChild(div);
-            scrollToBottom();
+            chatBox.scrollTop = chatBox.scrollHeight;
         }
 
         function showTyping() {
             const div = document.createElement('div');
             div.id = 'typing-indicator';
-            div.className = 'flex gap-4';
+            div.className = 'flex gap-4 animate-fade-in';
             div.innerHTML = `
-                <div class="w-8 h-8 rounded-full bg-indigo-100 flex-shrink-0 flex items-center justify-center text-indigo-600 mt-1"><i class="fas fa-robot text-xs"></i></div>
-                <div class="bg-white border border-slate-100 p-4 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-1 h-12">
-                    <div class="w-2 h-2 bg-slate-400 rounded-full typing-dot"></div>
-                    <div class="w-2 h-2 bg-slate-400 rounded-full typing-dot"></div>
-                    <div class="w-2 h-2 bg-slate-400 rounded-full typing-dot"></div>
+                <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-blue-600 shadow-sm"><i class="fas fa-robot"></i></div>
+                <div class="message-ai p-5 shadow-sm border border-gray-100 flex items-center">
+                    <div class="typing-indicator"><span></span><span></span><span></span></div>
                 </div>
             `;
             chatBox.appendChild(div);
-            scrollToBottom();
+            chatBox.scrollTop = chatBox.scrollHeight;
         }
 
         function removeTyping() {
             const el = document.getElementById('typing-indicator');
             if (el) el.remove();
-        }
-
-        function scrollToBottom() {
-            const container = document.getElementById('chat-container');
-            container.scrollTop = container.scrollHeight;
         }
 
         async function sendMessage() {
@@ -153,19 +138,19 @@
             // UI Update
             appendMessage('user', text);
             userInput.value = '';
-            userInput.style.height = 'auto';
+            userInput.style.height = 'auto'; // Reset height
             userInput.disabled = true;
             sendBtn.disabled = true;
             showTyping();
 
-            // Historique
-            history.push({ sender: 'user', text: text });
+            // Ajout à l'historique local
+            messageHistory.push({ sender: 'user', text: text });
 
             try {
                 const response = await fetch('/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text, history: history })
+                    body: JSON.stringify({ message: text, history: messageHistory })
                 });
 
                 const data = await response.json();
@@ -173,13 +158,13 @@
 
                 if (data.response) {
                     appendMessage('ai', data.response);
-                    history.push({ sender: 'ai', text: data.response });
+                    messageHistory.push({ sender: 'ai', text: data.response });
                 } else if (data.error) {
-                    appendMessage('ai', `⚠️ Erreur : ${data.error}`);
+                    appendMessage('ai', "⚠️ <strong>Erreur :</strong> " + data.error);
                 }
             } catch (error) {
                 removeTyping();
-                appendMessage('ai', "⚠️ Erreur de connexion au serveur.");
+                appendMessage('ai', "⚠️ <strong>Erreur de connexion :</strong> Impossible de joindre le serveur.");
                 console.error(error);
             } finally {
                 userInput.disabled = false;
@@ -188,11 +173,11 @@
             }
         }
 
-        function resetChat() {
-            if(confirm("Voulez-vous vraiment effacer cette conversation et commencer un nouveau sujet ?")) {
-                history = [];
+        function clearChat() {
+            if(confirm("Voulez-vous vraiment recommencer un nouveau sujet ? L'historique actuel sera effacé.")) {
+                messageHistory = [];
                 chatBox.innerHTML = '';
-                appendMessage('ai', "Nouvelle session démarrée. Quel sujet veux-tu explorer aujourd'hui ?");
+                appendMessage('ai', "Nouveau sujet commencé. Que veux-tu apprendre aujourd'hui ?");
             }
         }
     </script>

@@ -11,18 +11,19 @@ app.secret_key = os.getenv("SECRET_KEY", "cle_secrete_par_defaut_change_en_prod"
 
 # Configuration de l'API Google Gemini
 api_key = os.getenv("GOOGLE_API_KEY")
+model = None
 
 if api_key:
     genai.configure(api_key=api_key)
-    # Utilisation du modèle flash 1.5 (rapide et compatible)
     try:
+        # Nom exact du modèle compatible avec la version 0.8.3+
         model = genai.GenerativeModel('gemini-1.5-flash')
+        print("✅ Modèle gemini-1.5-flash chargé avec succès.")
     except Exception as e:
-        print(f"Erreur lors du chargement du modèle: {e}")
+        print(f"❌ Erreur chargement modèle: {e}")
         model = None
 else:
-    print("⚠️ ATTENTION: Clé API GOOGLE_API_KEY non trouvée.")
-    model = None
+    print("⚠️ ATTENTION: Clé API GOOGLE_API_KEY manquante.")
 
 # Prompt Système : Logique Pédagogique Avancée
 SYSTEM_PROMPT = """
@@ -75,35 +76,35 @@ def chat():
         return jsonify({"response": error_msg}), 500
 
     try:
-        # Démarrage d'une session de chat avec historique
+        # Démarrage d'une session de chat
         chat_session = model.start_chat(history=[])
         
         # Construction du contexte complet
-        # On injecte le prompt système comme premier message implicite du contexte
         context_prompt = f"{SYSTEM_PROMPT}\n\n--- DÉBUT DE LA CONVERSATION ---\n"
         
-        # Ajout de l'historique récent (les 6 derniers échanges pour garder le contexte sans saturer)
+        # Ajout de l'historique récent (les 6 derniers échanges)
         recent_history = history[-6:] 
         for msg in recent_history:
             role = "Utilisateur" if msg['sender'] == 'user' else "LearnIS"
             context_prompt += f"{role}: {msg['text']}\n"
         
-        # Message actuel
         full_prompt = f"{context_prompt}\nUtilisateur: {user_input}\nLearnIS:"
 
-        # Envoi à l'API
         response = chat_session.send_message(full_prompt)
         ai_response = response.text
 
         return jsonify({"response": ai_response})
 
     except Exception as e:
-        print(f"Erreur API Gemini: {str(e)}")
-        # Gestion d'erreur plus détaillée pour le débogage
         error_detail = str(e)
-        if "404" in error_detail or "model" in error_detail.lower():
-            return jsonify({"response": "Erreur de modèle : Le modèle spécifié est introuvable ou indisponible. Vérifiez le nom du modèle dans le code."}), 500
+        print(f"❌ Erreur API Gemini: {error_detail}")
         
+        # Gestion spécifique des erreurs de modèle
+        if "404" in error_detail or "model" in error_detail.lower() or "not found" in error_detail.lower():
+            return jsonify({
+                "response": "Erreur de modèle : Le modèle spécifié est introuvable. Veuillez vérifier la configuration du serveur."
+            }), 500
+            
         return jsonify({"error": f"Erreur interne: {error_detail}"}), 500
 
 if __name__ == '__main__':
