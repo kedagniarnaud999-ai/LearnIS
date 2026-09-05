@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LearnIS - Tuteur IA</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f4f4f9; }
+        #chat-box { height: 400px; border: 1px solid #ccc; overflow-y: scroll; padding: 10px; background: white; margin-bottom: 10px; }
+        .message { margin: 5px 0; padding: 8px; border-radius: 5px; }
+        .user { background: #e3f2fd; text-align: right; }
+        .bot { background: #f1f8e9; text-align: left; }
+        input { width: 70%; padding: 10px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🎓 LearnIS</h1>
+    <div id="chat-box"></div>
+    <input type="text" id="user-input" placeholder="Pose ta question ou explique ce que tu sais...">
+    <button onclick="sendMessage()">Envoyer</button>
+
+    <script>
+        const chatBox = document.getElementById('chat-box');
+        const userInput = document.getElementById('user-input');
+        let history = [];
+
+        function appendMessage(text, sender) {
+            const div = document.createElement('div');
+            div.className = `message ${sender}`;
+            div.textContent = text;
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+            
+            appendMessage(text, 'user');
+            userInput.value = '';
+            history.push({ sender: 'user', text: text });
+
+            const response = await fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text, history: history })
+            });
+            const data = await response.json();
+            
+            if (data.response) {
+                appendMessage(data.response, 'bot');
+                history.push({ sender: 'bot', text: data.response });
+            } else {
+                appendMessage("Erreur: " + (data.error || "Inconnue"), 'bot');
+            }
+        }
+
+        userInput.addEventListener("keypress", function(event) {
+            if (event.key === "Enter") sendMessage();
+        });
+    </script>
+</body>
+</html>

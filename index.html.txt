@@ -1,8 +1,0 @@
-<!DOCTYPE html>
-<html>
-<head><title>LearnIS</title></head>
-<body>
-    <h1>LearnIS est en ligne !</h1>
-    <p>Le système pédagogique est actif.</p>
-</body>
-</html>
