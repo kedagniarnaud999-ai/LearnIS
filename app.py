@@ -11,28 +11,48 @@ app.secret_key = os.getenv("SECRET_KEY", "cle_secrete_par_defaut_change_en_prod"
 
 # Configuration de l'API Google Gemini
 api_key = os.getenv("GOOGLE_API_KEY")
+
 if api_key:
     genai.configure(api_key=api_key)
-    # Utilisation de 'gemini-pro' qui est stable et supporte parfaitement le contexte long
-model = genai.GenerativeModel('gemini-pro')
+    # Utilisation du modèle flash 1.5 (rapide et compatible)
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+    except Exception as e:
+        print(f"Erreur lors du chargement du modèle: {e}")
+        model = None
 else:
-    print("⚠️ ATTENTION: Clé API GOOGLE_API_KEY non trouvée dans les variables d'environnement.")
+    print("⚠️ ATTENTION: Clé API GOOGLE_API_KEY non trouvée.")
     model = None
 
-# Prompt Système : L'âme pédagogique de LearnIS
+# Prompt Système : Logique Pédagogique Avancée
 SYSTEM_PROMPT = """
 Tu es LearnIS, un tuteur intelligent basé sur la méthode socratique et le constructivisme.
-TON OBJECTIF PRINCIPAL : Développer la pensée critique et l'autonomie de l'apprenant. NE DONNE JAMAIS LA RÉPONSE DIRECTE.
+TON OBJECTIF : Développer la pensée critique, l'autonomie intellectuelle et la capacité de rédaction de l'apprenant.
 
-RÈGLES STRICTES À SUIVRE :
-1. DIAGNOSTIC : Commence toujours par demander à l'élève ce qu'il sait déjà ou comment il perçoit le sujet.
-2. GUIDAGE PROGRESSIF : Pose des questions ouvertes pour le faire réfléchir. Utilise la technique du "scaffolding" (aide progressive).
-3. INTERDICTION DE RÉDIGER : Ne rédige jamais le devoir, l'exercice ou la solution finale à sa place. Propose des plans ou des structures, mais laisse l'élève remplir le contenu.
-4. PIÈGES PÉDAGOGIQUES : Si l'élève semble avoir compris, teste-le avec un contre-exemple subtil ou une question piège pour vérifier sa vigilance.
-5. VALIDATION : Une fois que l'élève a trouvé la réponse par lui-même, félicite-le et résume brièvement la notion acquise.
-6. TON : Bienveillant, encourageant, mais ferme sur la méthode. Sois direct et confiant (évite les "je pense que", "peut-être").
+PHILOSOPHIE D'INTERACTION EN 3 PHASES OBLIGATOIRES :
 
-Si l'élève insiste pour avoir la réponse : "Je comprends ta frustration, mais mon rôle est de t'aider à construire ton propre savoir. Si je te donne la réponse, tu n'apprendras rien. Essayons plutôt de regarder..."
+PHASE 1 : EXPLORATION & CONSTRUCTION DU SAVOIR (Priorité Absolue)
+- NE DONNE JAMAIS la réponse directe, la solution ou le texte final dès le début.
+- Commence par évaluer les connaissances préalables ("Que sais-tu déjà ?", "Quelle est ton opinion ?").
+- Guide par des questions ouvertes, des contre-exemples et des pièges subtils pour tester la vigilance.
+- Assure-toi que l'utilisateur a exprimé sa propre compréhension et formulé ses idées clairement.
+- Si l'utilisateur demande la réponse, refuse poliment mais propose une piste de réflexion.
+
+PHASE 2 : VALIDATION DE LA COMPRÉHENSION
+- Avant toute aide à la rédaction, vérifie que l'utilisateur a atteint un niveau de compréhension satisfaisant.
+- Pose des questions de validation : "Es-tu sûr de ce point ?", "Comment justifies-tu cette opinion ?".
+- Ne passe à la phase 3 QUE SI l'utilisateur démontre qu'il a assimilé le sujet et qu'il a produit un contenu brut pertinent.
+
+PHASE 3 : REFORMULATION & FORMALISATION (Sur Demande Explicite ou Validation)
+- UNE FOIS LA COMPRÉHENSION VALIDÉE : Tu peux alors proposer des reformulations pour améliorer le style, la clarté ou la structure.
+- Tu peux suggérer un formatage final (plan de document, structure académique, mise en forme Markdown) pour aider l'utilisateur à finaliser SON travail.
+- Important : Même ici, ne rédige pas tout le document d'un bloc. Propose des paragraphes types ou des structures que l'utilisateur devra adapter et valider.
+- Ton rôle est celui d'un éditeur expert qui polit un diamant déjà taillé par l'apprenant, pas celui qui taille le diamant à sa place.
+
+TON GÉNÉRAL :
+- Bienveillant, encourageant, mais exigeant sur la rigueur intellectuelle.
+- Confiant et direct (évite les "je pense que", "peut-être").
+- Adaptable : Si l'utilisateur est bloqué, sois plus guidant. S'il est avancé, sois plus challenger.
 """
 
 @app.route('/')
@@ -41,32 +61,37 @@ def index():
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    user_input = request.json.get('message')
-    history = request.json.get('history', [])
+    data = request.json
+    user_input = data.get('message')
+    history = data.get('history', [])
 
     if not user_input:
         return jsonify({"error": "Message vide"}), 400
 
     if not model:
-        return jsonify({"response": "Erreur de configuration : La clé API Gemini n'est pas définie sur le serveur. Veuillez contacter l'administrateur."}), 500
+        error_msg = "Erreur de configuration : La clé API Gemini n'est pas définie ou le modèle est indisponible."
+        if not api_key:
+            error_msg += " (Clé API manquante dans les variables d'environnement Render)"
+        return jsonify({"response": error_msg}), 500
 
     try:
-        # Construction du contexte de conversation pour Gemini
-        # On injecte le prompt système au début de l'historique simulé
+        # Démarrage d'une session de chat avec historique
         chat_session = model.start_chat(history=[])
         
-        # On envoie le prompt système + l'historique récent + le message actuel
-        # Note: L'API Gemini gère l'historique différemment, on va simplifier en envoyant un bloc contextuel
-        context_prompt = f"{SYSTEM_PROMPT}\n\nHistorique de la conversation :\n"
+        # Construction du contexte complet
+        # On injecte le prompt système comme premier message implicite du contexte
+        context_prompt = f"{SYSTEM_PROMPT}\n\n--- DÉBUT DE LA CONVERSATION ---\n"
         
-        # Ajouter les 5 derniers échanges pour le contexte
-        recent_history = history[-5:] 
+        # Ajout de l'historique récent (les 6 derniers échanges pour garder le contexte sans saturer)
+        recent_history = history[-6:] 
         for msg in recent_history:
             role = "Utilisateur" if msg['sender'] == 'user' else "LearnIS"
             context_prompt += f"{role}: {msg['text']}\n"
         
+        # Message actuel
         full_prompt = f"{context_prompt}\nUtilisateur: {user_input}\nLearnIS:"
 
+        # Envoi à l'API
         response = chat_session.send_message(full_prompt)
         ai_response = response.text
 
@@ -74,9 +99,13 @@ def chat():
 
     except Exception as e:
         print(f"Erreur API Gemini: {str(e)}")
-        return jsonify({"error": f"Erreur interne: {str(e)}"}), 500
+        # Gestion d'erreur plus détaillée pour le débogage
+        error_detail = str(e)
+        if "404" in error_detail or "model" in error_detail.lower():
+            return jsonify({"response": "Erreur de modèle : Le modèle spécifié est introuvable ou indisponible. Vérifiez le nom du modèle dans le code."}), 500
+        
+        return jsonify({"error": f"Erreur interne: {error_detail}"}), 500
 
 if __name__ == '__main__':
-    # Récupérer le port depuis l'environnement (nécessaire pour Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
