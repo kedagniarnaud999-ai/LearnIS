@@ -1,1 +1,1 @@
-python-3.11.9
+google-generativeai==0.8.4
